@@ -7,5 +7,6 @@ class AppInfo {
   /// Play's "What's new" / TestFlight's "What to Test" for this build: one
   /// plain-words line (tool/play/whats_new.py reads it).
   static const latest =
-      'Motivate as fast as you like: the ground now rushes past smoothly instead of jumping back.';
+      'Pausing now brings Sisyphus to a gentle stop. The valley has more to see: ridges, pines, '
+      'a stream, sheep and a little temple. Motivate as fast as you like, the ground keeps up.';
 }

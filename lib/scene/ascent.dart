@@ -34,6 +34,29 @@ class AscentState {
   }
 
   bool dark = false;
+
+  /// Paused (or waiting): Sisyphus eases to a stop and leans on the stone.
+  bool paused = false;
+
+  /// 0 (standing still) .. 1 (climbing), eased toward [paused].
+  double motion = 1;
+
+  /// Climbing time: clock time scaled by [motion], so steps and the ground
+  /// slow down and stop smoothly instead of freezing.
+  double walkT = 0;
+  double _lastT = double.nan;
+
+  /// Moves the climb on to clock time [t] (once per frame).
+  void advance(double t) {
+    final dt = _lastT.isNaN ? 0.0 : (t - _lastT).clamp(0.0, 0.25);
+    _lastT = t;
+    final target = paused ? 0.0 : 1.0;
+    // About 0.7 s to stop, a little quicker to get going again.
+    final rate = paused ? 3.2 : 4.0;
+    motion += (target - motion) * (1 - math.exp(-dt * rate));
+    if ((motion - target).abs() < 0.001) motion = target;
+    walkT += dt * motion;
+  }
 }
 
 /// POV: Sisyphus's hands on the boulder, the slope rising to a ridge under
@@ -54,7 +77,8 @@ class AscentPainter extends CustomPainter {
 
   /// Ground travelled (world units).
   double walked(double t) {
-    var w = t * 0.55 + 0.12 * math.sin(t * math.pi * 2 / _period) + state.shoveBase;
+    final m = state.walkT;
+    var w = m * 0.55 + 0.12 * math.sin(m * math.pi * 2 / _period) + state.shoveBase;
     for (final s in state.shoves) {
       final d = t - s;
       if (d > 0) w += AscentState.shoveDistance * (1 - math.exp(-d * AscentState.shoveRate));
@@ -95,10 +119,18 @@ class AscentPainter extends CustomPainter {
         ? math.exp(-since * 6) + (since > 0.18 ? 0.6 * math.exp(-(since - 0.18) * 9) : 0)
         : 0.0;
 
-    // Camera bob with each step (and a jolt on a shove / slip).
-    final step = math.sin(t * math.pi * 2 / _period);
+    // Camera bob with each step (and a jolt on a shove / slip). Standing
+    // still, only slow breathing.
+    state.advance(t);
+    final m = state.walkT;
+    final rest = 1 - state.motion;
+    final step = math.sin(m * math.pi * 2 / _period);
+    final breathe = math.sin(t * 1.3) * rest;
     c.save();
-    c.translate(math.sin(t * math.pi / _period) * 2.5, step * 3.5 - kick * 6 + slip * 14);
+    c.translate(
+      math.sin(m * math.pi / _period) * 2.5,
+      step * 3.5 * state.motion + breathe * 2.5 - kick * 6 + slip * 14,
+    );
     final full = Rect.fromLTWH(-10, -20, w + 20, h + 40);
 
     // Sky: heavy, brightening a touch near the top of the climb.
@@ -251,7 +283,7 @@ class AscentPainter extends CustomPainter {
     final skinLit = dark ? const Color(0xFFB98A6C) : const Color(0xFFE2AE86);
     final skinDark = dark ? const Color(0xFF5E3F2E) : const Color(0xFF8D5A3D);
     for (final side in [-1, 1]) {
-      final phase = side < 0 ? step : -step;
+      final phase = (side < 0 ? step : -step) * state.motion + breathe * 0.5;
       final reach = 0.02 * phase + push;
       final palm = bc + Offset(side * br * 0.5, br * (0.32 - reach * 3));
       final elbow = Offset(w / 2 + side * w * 0.52, h * 1.08);

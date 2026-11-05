@@ -188,6 +188,7 @@ class _ClimbScreenState extends State<ClimbScreen> {
         final now = _exp.now();
         final resting = s.phase == Phase.rest;
         ascent.progress = resting ? 0 : s.progress(now);
+        ascent.paused = s.paused || s.waiting;
         return PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) {

@@ -193,13 +193,14 @@ void boulder(
 }
 
 /// Black-figure Sisyphus pushing a boulder (side view), for the home
-/// medallion and small marks. Drawn in a 100-unit box, feet at y = 100.
+/// medallion and small marks. Drawn in a 111 x 100-unit box (100 = [box]'s
+/// width), ground line at y = 98.
 void pusherFigure(Canvas c, Rect box, Color ink, {double step = 0}) {
   final s = box.width / 100;
   Offset p(double x, double y) => box.topLeft + Offset(x * s, y * s);
   final w = Paint()..color = ink;
-  // Boulder ahead (upper right of the slope).
-  c.drawCircle(p(72, 52), 24 * s, w);
+  // Boulder ahead, resting on the ground line (y = 98).
+  c.drawCircle(p(81, 68), 30 * s, w);
   // Head (bent forward), beard.
   c.drawCircle(p(38, 37), 6.4 * s, w);
   c.drawPath(
@@ -212,10 +213,9 @@ void pusherFigure(Canvas c, Rect box, Color ink, {double step = 0}) {
   );
   // Torso leaning into the stone.
   c.drawPath(taper(p(26, 66), p(41, 44), 13 * s, 11 * s), w);
-  // Arms to the boulder.
-  c.drawPath(taper(p(39, 47), p(51, 47), 4.6 * s, 4 * s), w);
-  c.drawPath(taper(p(51, 47), p(54, 40), 4 * s, 3.6 * s), w);
-  c.drawPath(taper(p(41, 50), p(52, 55), 4.6 * s, 4 * s), w);
+  // Arms, palms flat on the stone.
+  c.drawPath(taper(p(39, 47), p(57, 50), 4.6 * s, 4 * s), w);
+  c.drawPath(taper(p(41, 51), p(54.5, 56), 4.6 * s, 4 * s), w);
   // Tunic.
   c.drawPath(
     Path()

@@ -455,26 +455,34 @@ class MedallionPainter extends CustomPainter {
     // Inside: slope and figure.
     c.save();
     c.clipPath(Path()..addOval(Rect.fromCircle(center: ctr, radius: ring - r * 0.03)));
+    // The slope: a straight line rising to the right.
+    final a0 = ctr + Offset(-r, r * 0.62), a1 = ctr + Offset(r, -r * 0.05);
+    final ang = math.atan2(a1.dy - a0.dy, a1.dx - a0.dx);
     final slope = Path()
-      ..moveTo(ctr.dx - r, ctr.dy + r * 0.62)
-      ..lineTo(ctr.dx + r, ctr.dy - r * 0.05)
+      ..moveTo(a0.dx, a0.dy)
+      ..lineTo(a1.dx, a1.dy)
       ..lineTo(ctr.dx + r, ctr.dy + r)
       ..lineTo(ctr.dx - r, ctr.dy + r)
       ..close();
     c.drawPath(slope, fill(ink));
+    // Figure and stone stand on that line: local ground (y = 98) on the slope.
+    final bw = r * 0.82;
+    final s = bw / 100;
+    final foot = Offset.lerp(a0, a1, 0.2)!;
     c.save();
-    c.translate(ctr.dx - r * 0.5, ctr.dy - r * 0.38);
-    c.rotate(-0.33);
-    pusherFigure(c, Rect.fromLTWH(0, 0, r * 0.95, r * 0.95), ink);
-    c.restore();
-    // Incised highlights (red-figure detail lines on the stone).
+    c.translate(foot.dx, foot.dy);
+    c.rotate(ang);
+    c.translate(0, -98 * s + 0.5);
+    pusherFigure(c, Rect.fromLTWH(0, 0, bw, bw), ink);
+    // Incised highlight on the stone (red-figure detail line).
     c.drawArc(
-      Rect.fromCircle(center: ctr + Offset(r * 0.25, -r * 0.31), radius: r * 0.16),
-      3.6,
-      1.2,
+      Rect.fromCircle(center: Offset(81 * s, 68 * s), radius: 22 * s),
+      3.5,
+      1.3,
       false,
-      stroke(fade(clay, 0.8), r * 0.015),
+      stroke(fade(clay, 0.85), r * 0.016),
     );
+    c.restore();
     c.restore();
   }
 
