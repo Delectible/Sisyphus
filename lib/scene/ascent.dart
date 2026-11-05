@@ -11,9 +11,28 @@ class AscentState {
   /// How far up this climb, 0..1.
   double progress = 0;
 
-  /// Clock times of recent shoves (Motivate) and the last slip.
+  /// Clock times of shoves (Motivate) still settling, the distance of the
+  /// ones that have settled, and the last slip.
   final List<double> shoves = [];
+  double shoveBase = 0;
   double slipAt = -100;
+
+  /// Ground each shove adds (world units) and how fast it eases in.
+  static const shoveDistance = 1.2;
+  static const shoveRate = 4.0;
+
+  /// Adds a shove at clock time [t]. Shoves older than 3 s have settled
+  /// (within a millionth) and fold into [shoveBase], so the ground never
+  /// jumps however fast Motivate is tapped.
+  void shove(double t) {
+    shoves.removeWhere((s) {
+      if (t - s < 3) return false;
+      shoveBase += shoveDistance;
+      return true;
+    });
+    shoves.add(t);
+  }
+
   bool dark = false;
 }
 
@@ -34,14 +53,15 @@ class AscentPainter extends CustomPainter {
   }
 
   /// Ground travelled (world units).
-  double _walked(double t) {
-    var w = t * 0.55 + 0.12 * math.sin(t * math.pi * 2 / _period);
+  double walked(double t) {
+    var w = t * 0.55 + 0.12 * math.sin(t * math.pi * 2 / _period) + state.shoveBase;
     for (final s in state.shoves) {
       final d = t - s;
-      if (d > 0) w += 1.2 * (1 - math.exp(-d * 4));
+      if (d > 0) w += AscentState.shoveDistance * (1 - math.exp(-d * AscentState.shoveRate));
     }
+    // The slip eases back to nothing (gone to a thousandth by 12 s).
     final ds = t - state.slipAt;
-    if (ds > 0 && ds < 4) w -= 2.2 * math.sin(math.min(ds / 0.6, 1) * math.pi / 2) * math.exp(-ds * 0.9);
+    if (ds > 0 && ds < 12) w -= 2.2 * math.sin(math.min(ds / 0.6, 1) * math.pi / 2) * math.exp(-ds * 0.9);
     return w;
   }
 
@@ -140,7 +160,7 @@ class AscentPainter extends CustomPainter {
     );
 
     // Stones, tufts and cracks on the slope, coming toward us.
-    final walked = _walked(t);
+    final walked = this.walked(t);
     final (bc, br) = boulderAt(size);
     final contactY = bc.dy + br * 0.92;
     final items = <(double z, double x, int i)>[];

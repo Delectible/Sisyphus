@@ -115,8 +115,7 @@ class _ClimbScreenState extends State<ClimbScreen> {
 
   void _shove() {
     HapticFeedback.mediumImpact();
-    ascent.shoves.add(clock.t);
-    if (ascent.shoves.length > 6) ascent.shoves.removeAt(0);
+    ascent.shove(clock.t);
     _exp.shove();
     _say(shoveLines[_rnd.nextInt(shoveLines.length)]);
   }

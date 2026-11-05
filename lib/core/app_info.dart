@@ -2,11 +2,10 @@
 /// pubspec.yaml's `version:` for every user-visible change.
 class AppInfo {
   static const name = 'Sisyphus';
-  static const version = '0.1.0';
+  static const version = '0.1.1';
 
   /// Play's "What's new" / TestFlight's "What to Test" for this build: one
   /// plain-words line (tool/play/whats_new.py reads it).
   static const latest =
-      'First build: push the boulder while you focus, rest in the valley, '
-      'reach the summit. Stats, poems and a few secrets.';
+      'Motivate as fast as you like: the ground now rushes past smoothly instead of jumping back.';
 }
