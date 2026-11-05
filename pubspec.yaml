@@ -1,0 +1,45 @@
+name: sisyphus
+description: >-
+  A focus (pomodoro) timer. Ascend: push the boulder up the mountain while
+  you work. Rest: lie in the valley while it waits. Reach the summit at the
+  end of the session.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Settings, stats and the running session.
+  shared_preferences: ^2.5.5
+  # "Phase over" alerts while the app is closed.
+  flutter_local_notifications: ^22.3.1
+  timezone: ^0.11.0
+  # Debug password check (only a salted hash is in the app).
+  crypto: ^3.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Cinzel
+      fonts:
+        - asset: assets/fonts/Cinzel-400.ttf
+        - asset: assets/fonts/Cinzel-600.ttf
+          weight: 600
+        - asset: assets/fonts/Cinzel-700.ttf
+          weight: 700
+    - family: Jost
+      fonts:
+        - asset: assets/fonts/Jost-400.ttf
+        - asset: assets/fonts/Jost-500.ttf
+          weight: 500
+        - asset: assets/fonts/Jost-600.ttf
+          weight: 600

@@ -1,0 +1,270 @@
+name: Build
+on:
+  # Only main builds; work branches are for drafting (run by hand if needed).
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'fastlane/**', '.github/workflows/play-listing.yml']
+  workflow_dispatch:
+    inputs:
+      ios:
+        description: Also build the iPhone app
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  ORG: com.dingo          # app id com.dingo.sisyphus (as registered on Google Play)
+  APP: sisyphus
+
+jobs:
+  # flutter analyze + flutter test. A build is only published when these pass.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      # flutter create re-resolves dependencies and ignores pubspec.lock (it
+      # pulled in shared_preferences_android 2.5.0, whose JNI calls R8 strips:
+      # the app hung at launch). Put the locked versions back.
+      - run: |
+          flutter create --org $ORG --project-name $APP --platforms android .
+          git checkout -- pubspec.lock
+          flutter pub get --enforce-lockfile
+          git diff --exit-code pubspec.lock || { echo "::error::Dependencies drifted from pubspec.lock"; exit 1; }
+      - name: Unpack the private upload key (repo secrets)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "SISYPHUS_KEYSTORE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: signing with the public test key."
+          fi
+      # versionCode = run number, so every build is newer than the last (Play
+      # refuses to take the same versionCode twice).
+      - name: Build the APK (sideloading) and app bundle (Play Store)
+        env:
+          SISYPHUS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          DEBUG_PASSWORD: ${{ secrets.DEBUG_PASSWORD }}
+        run: |
+          # Only a salted hash of the Debug password goes into the app.
+          KEY=""; if [ -n "$DEBUG_PASSWORD" ]; then KEY=$(printf 'sisyphus-debug:%s' "$DEBUG_PASSWORD" | shasum -a 256 | cut -d' ' -f1); fi
+          if [ -z "$KEY" ]; then echo "::warning::DEBUG_PASSWORD secret arrived empty: Debug stays shut in this build."; else echo "Debug password: set"; fi
+          flutter build apk --release --build-number=${{ github.run_number }} --dart-define=DEBUG_KEY=$KEY
+          flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=DEBUG_KEY=$KEY
+      - run: |
+          mkdir dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/Sisyphus-${{ github.run_number }}.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/Sisyphus-${{ github.run_number }}.aab
+      # Kept a day, only for the Play upload below (artifacts on a public
+      # repo can be downloaded by anyone signed in to GitHub).
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: dist/, retention-days: 1 }
+
+  # Mac build minutes are free on public repos but cost 10x on private ones,
+  # so on a private repo the iPhone build only runs when asked for: put [ios]
+  # in the commit message, or start the workflow by hand.
+  ios:
+    if: (github.event_name == 'workflow_dispatch' && inputs.ios) || (github.event_name == 'push' && (!github.event.repository.private || contains(github.event.head_commit.message, '[ios]')))
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Fill in the Xcode project
+        run: |
+          flutter create --org $ORG --project-name $APP --platforms ios .
+          git checkout -- pubspec.lock
+          flutter pub get --enforce-lockfile
+          git diff --exit-code pubspec.lock || { echo "::error::Dependencies drifted from pubspec.lock"; exit 1; }
+          sed -i '' -E 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/' ios/Runner.xcodeproj/project.pbxproj
+      - env:
+          DEBUG_PASSWORD: ${{ secrets.DEBUG_PASSWORD }}
+        run: |
+          KEY=""; if [ -n "$DEBUG_PASSWORD" ]; then KEY=$(printf 'sisyphus-debug:%s' "$DEBUG_PASSWORD" | shasum -a 256 | cut -d' ' -f1); fi
+          flutter build ios --release --no-codesign --build-number=${{ github.run_number }} --dart-define=DEBUG_KEY=$KEY
+      - name: Package an unsigned .ipa (signed on your computer when sideloading)
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/ios/iphoneos/Runner.app dist/Payload/
+          # Ad-hoc sign every framework and the app: Sideloadly re-signs
+          # with your Apple ID, and its signer fails on a binary that has
+          # never been signed; it only has to replace an existing signature.
+          xattr -cr dist/Payload/Runner.app
+          for f in dist/Payload/Runner.app/Frameworks/*.framework dist/Payload/Runner.app/Frameworks/*.dylib; do
+            if [ -e "$f" ]; then codesign --force --sign - --timestamp=none "$f"; fi
+          done
+          codesign --force --sign - --timestamp=none dist/Payload/Runner.app
+          codesign --verify --deep --strict dist/Payload/Runner.app && echo "ad-hoc signed"
+          cd dist && zip -qry Sisyphus-${{ github.run_number }}.ipa Payload && rm -rf Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: ios, path: dist/, retention-days: 1 }
+      # TestFlight (main only). Needs the repo secrets APPSTORE_KEY_ID,
+      # APPSTORE_ISSUER_ID, APPSTORE_KEY (the .p8 file's text; an App Store
+      # Connect API key with the Admin role, so Xcode can make the signing
+      # certificate and profile itself) and APPLE_TEAM_ID, plus the app made
+      # in App Store Connect with bundle id com.dingo.sisyphus. Without them
+      # the job just says so. The archive is unsigned (automatic signing at
+      # archive time wants a development profile, i.e. a registered iPhone);
+      # the export signs it for the App Store with Apple's cloud-managed
+      # distribution certificate.
+      - name: Look for the App Store Connect key
+        id: asc
+        if: github.ref == 'refs/heads/main'
+        env:
+          KEY: ${{ secrets.APPSTORE_KEY }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$KEY" ] && [ -n "$KEY_ID" ] && [ -n "$ISSUER" ] && [ -n "$TEAM" ]; then
+            mkdir -p "$RUNNER_TEMP/asc"
+            printf '%s\n' "$KEY" > "$RUNNER_TEMP/asc/AuthKey_$KEY_ID.p8"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No App Store Connect key secrets: not uploading to TestFlight."
+          fi
+      - name: Sign and upload to TestFlight
+        if: steps.asc.outputs.ok == 'true'
+        env:
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey_$KEY_ID.p8"
+                -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER")
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM="$TEAM" TARGETED_DEVICE_FAMILY=1 archive | tail -n 40
+          test -d "$RUNNER_TEMP/Runner.xcarchive"
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
+      - name: Forget the key
+        if: always() && steps.asc.outputs.ok == 'true'
+        run: rm -rf "$RUNNER_TEMP/asc"
+
+  # External TestFlight testers get each main build too: once Apple has
+  # processed the upload, it joins every external group with its "What to
+  # Test" (AppInfo.latest) and goes to beta review if Apple wants one
+  # (tool/appstore/testflight_external.py). Waits up to an hour.
+  testflight:
+    needs: [ios]
+    if: github.ref == 'refs/heads/main' && needs.ios.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for the App Store Connect key
+        id: asc
+        env:
+          KEY: ${{ secrets.APPSTORE_KEY }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          if [ -n "$KEY" ] && [ -n "$KEY_ID" ] && [ -n "$ISSUER" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::No App Store Connect key secrets: external testers not updated."; fi
+      - uses: actions/checkout@v4
+        if: steps.asc.outputs.ok == 'true'
+      - name: Hand the build to the external testers
+        if: steps.asc.outputs.ok == 'true'
+        env:
+          KEY: ${{ secrets.APPSTORE_KEY }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          pip install --quiet pyjwt cryptography
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.p8"
+          KEY_FILE="$RUNNER_TEMP/key.p8" python3 tool/appstore/testflight_external.py ${{ github.run_number }}
+          rm -f "$RUNNER_TEMP/key.p8"
+
+  release:
+    needs: [check, android, ios]
+    if: always() && needs.check.result == 'success' && needs.android.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      # APK + IPA for sideloading; never the .aab (that goes to Play).
+      - name: Pick the files to publish
+        run: |
+          rm -f dist/*.aab
+          ls -l dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Sisyphus build ${{ github.run_number }} (${{ github.ref_name }})
+          body: ${{ github.event.head_commit.message || 'Manual build' }}
+          prerelease: ${{ github.ref_name != 'main' }}
+          target_commitish: ${{ github.sha }}
+          files: dist/*
+          fail_on_unmatched_files: false
+
+  # Google Play internal testing. Needs the repo secret PLAY_SERVICE_ACCOUNT_JSON
+  # (a service account invited in Play Console > Users and permissions);
+  # without it the job just says so. Only builds from main go to Play.
+  # Play only accepts API uploads once the first .aab was uploaded by hand.
+  # The store listing itself is published by play-listing.yml.
+  play:
+    needs: [check, android]
+    if: github.ref == 'refs/heads/main' && needs.check.result == 'success' && needs.android.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for the Play service account
+        id: sa
+        env:
+          SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$SA" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::No PLAY_SERVICE_ACCOUNT_JSON secret: not uploading to Google Play."; fi
+      - uses: actions/download-artifact@v4
+        if: steps.sa.outputs.ok == 'true'
+        with: { name: android, path: dist }
+      - uses: actions/checkout@v4
+        if: steps.sa.outputs.ok == 'true'
+        with: { path: src }
+      # "What's new" = version + AppInfo.latest (this build's change).
+      - name: Release notes
+        if: steps.sa.outputs.ok == 'true'
+        run: |
+          mkdir whatsnew
+          python3 -I src/tool/play/whats_new.py > whatsnew/whatsnew-en-AU
+          cat whatsnew/whatsnew-en-AU
+      - uses: r0adkll/upload-google-play@v1
+        if: steps.sa.outputs.ok == 'true'
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.dingo.sisyphus
+          releaseFiles: dist/Sisyphus-${{ github.run_number }}.aab
+          tracks: internal
+          # 'completed' rolls out to testers straight away. While the app is
+          # still a draft in the Play Console, Play only takes 'draft':
+          # set the repo variable PLAY_RELEASE_STATUS=draft until then.
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'completed' }}
+          whatsNewDirectory: whatsnew
