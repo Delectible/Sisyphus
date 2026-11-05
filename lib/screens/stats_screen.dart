@@ -76,6 +76,7 @@ class StatsScreen extends StatelessWidget {
                 children: [
                   _Row('Sessions started', '${stats.sessions}'),
                   _Row('Left before the top', '${stats.abandoned}'),
+                  _Row('Metres climbed', _metres(stats.metres)),
                   _Row('Longest climb', span(stats.longest)),
                   _Row('Best streak', '${stats.bestStreak} ${stats.bestStreak == 1 ? 'day' : 'days'}'),
                   _Row('Shoves of motivation', '${stats.shoves}'),
@@ -84,6 +85,19 @@ class StatsScreen extends StatelessWidget {
                 ],
               ),
             ),
+            if (stats.byLabel.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('BY LABEL', style: Type.label(p.ink, size: 12)),
+                    const SizedBox(height: 12),
+                    ..._labelBars(stats, p),
+                  ],
+                ),
+              ),
+            ],
             if (stats.recent.isNotEmpty) ...[
               const SizedBox(height: 22),
               Text('RECENT CLIMBS', style: Type.label(p.muted, size: 11)),
@@ -97,6 +111,47 @@ class StatsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+String _metres(int m) => m >= 10000 ? '${(m / 1000).toStringAsFixed(1)} km' : '$m m';
+
+/// One bar per label, longest focus first.
+List<Widget> _labelBars(Stats stats, Palette p) {
+  final rows = stats.byLabel.entries.toList()..sort((a, b) => b.value.focus.compareTo(a.value.focus));
+  final top = rows.isEmpty ? 1 : math.max(1, rows.first.value.focus);
+  return [
+    for (final e in rows)
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(e.key, style: Type.text(p.ink, size: 14, weight: FontWeight.w500)),
+                ),
+                Text(
+                  '${span(Duration(seconds: e.value.focus))}  ·  ${e.value.mountains} '
+                  '${e.value.mountains == 1 ? 'mountain' : 'mountains'}',
+                  style: Type.text(p.muted, size: 12.5),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: e.value.focus / top,
+                minHeight: 6,
+                backgroundColor: p.line.withValues(alpha: 0.5),
+                valueColor: AlwaysStoppedAnimation(p.olive),
+              ),
+            ),
+          ],
+        ),
+      ),
+  ];
 }
 
 class _Big extends StatelessWidget {
@@ -154,7 +209,16 @@ class _Recent extends StatelessWidget {
             color: r.summited ? p.terracotta : p.muted,
           ),
           const SizedBox(width: 12),
-          Expanded(child: Text('${date(r.start)}, ${timeOfDay(r.start)}', style: Type.text(p.ink, size: 14))),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${date(r.start)}, ${timeOfDay(r.start)}', style: Type.text(p.ink, size: 14)),
+                if (r.label != null)
+                  Text(r.label!, style: Type.text(p.olive, size: 12, weight: FontWeight.w500)),
+              ],
+            ),
+          ),
           Text(
             '${span(r.focus)}  ·  ${r.climbsDone}/${r.climbsPlanned}',
             style: Type.text(p.muted, size: 13.5),

@@ -3,13 +3,16 @@ import 'dart:ui';
 
 import 'package:flutter/rendering.dart' hide Gradient;
 
+import '../core/laurels.dart';
 import 'clock.dart';
 import 'kit.dart';
 
 /// The end of the session: Sisyphus sitting against the boulder on the
 /// summit, above a sea of clouds (sunset, or a starry night in dark mode).
 class SummitPainter extends CustomPainter {
-  SummitPainter(this.clock, {required this.dark}) : super(repaint: clock);
+  SummitPainter(this.clock, {required this.dark, this.skin = granite}) : super(repaint: clock);
+
+  final Skin skin;
 
   final SceneClock clock;
   final bool dark;
@@ -271,16 +274,7 @@ class SummitPainter extends CustomPainter {
         ..color = fade(const Color(0xFF000000), 0.6)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
-    boulder(
-      c,
-      bc,
-      br,
-      roll: 1.1,
-      base: dark ? const Color(0xFF3A3550) : const Color(0xFF6B5150),
-      lit: dark ? const Color(0xFFB08C98) : const Color(0xFFF6C090),
-      shade: dark ? const Color(0xFF110F1C) : const Color(0xFF2A1E25),
-      light: const Offset(0.85, 0.05),
-    );
+    skinnedBoulder(c, bc, br, dark ? skin.night : skin.sunset, roll: 1.1, light: const Offset(0.85, 0.05));
     // Warm bounce light from the rock on the stone's lower right.
     c.save();
     c.clipPath(Path()..addOval(Rect.fromCircle(center: bc, radius: br)));
@@ -413,7 +407,7 @@ class SummitPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant SummitPainter old) => old.dark != dark;
+  bool shouldRepaint(covariant SummitPainter old) => old.dark != dark || old.skin.id != skin.id;
 }
 
 /// The home medallion: black-figure Sisyphus pushing his stone up a slope,

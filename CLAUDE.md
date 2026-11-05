@@ -38,8 +38,9 @@ Same workflow as Darkroom (Delectible/Darkroom).
 - Real brand names in the app or listings. Quotes: short lines only, credited.
 - A Podfile; deleting `AndroidManifest.xml` / `android/app/build.gradle.kts`;
   changing `com.dingo.sisyphus`.
-- Image assets for the scenes: they are drawn in code (`lib/scene/`) to
-  keep the download small. The icon is generated (`tool/icon/make_icons.py`).
+- Image or audio assets: scenes are drawn in code (`lib/scene/`) and sounds
+  synthesised (`lib/core/ambience.dart`) to keep the download small. The
+  icon is generated (`tool/icon/make_icons.py`).
 - Driving the scenes from a vsync Ticker: `SceneClock` runs at the
   Settings frame rate (60/30) and stops in the background; keep it that way
   (battery).

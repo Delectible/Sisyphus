@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'alerts.dart';
+import 'laurels.dart';
 import 'session.dart';
 import 'settings.dart';
 import 'stats.dart';
@@ -16,10 +17,13 @@ import 'stats.dart';
 class Expedition extends ChangeNotifier {
   Expedition(this._prefs, this.settings, this.stats, {this.alerts}) {
     settings.addListener(_settingsChanged);
+    _alertsWere = settings.alerts;
+    _countdownWere = settings.countdown;
     final raw = _prefs.getString(_key);
     if (raw != null) {
       try {
         session = _wire(Session.fromJson(jsonDecode(raw) as Map<String, dynamic>));
+        laurelsAtStart = earnedIds(stats);
         _catchUp();
       } catch (_) {
         _prefs.remove(_key);
@@ -41,6 +45,10 @@ class Expedition extends ChangeNotifier {
   /// The last finished session, for the summit screen.
   SessionRecord? last;
 
+  /// Laurels already earned when this session began (the summit lists
+  /// the new ones).
+  Set<String> laurelsAtStart = {};
+
   /// The latest thing that happened, and a counter so listeners see repeats.
   SessionEvent event = SessionEvent.none;
   int eventCount = 0;
@@ -58,12 +66,16 @@ class Expedition extends ChangeNotifier {
       started: now(),
       speed: settings.speed,
       autoContinue: settings.autoContinue,
+      longRestMinutes: settings.longRest ? settings.longMinutes : 0,
+      longEvery: settings.longEvery,
+      label: settings.label,
     );
     session = _wire(s);
     last = null;
+    laurelsAtStart = earnedIds(stats);
     event = SessionEvent.ascentBegins;
     eventCount++;
-    if (settings.alerts) unawaited(alerts?.ask().then((_) => _changed()));
+    if (settings.alerts || settings.countdown) unawaited(alerts?.ask().then((_) => _changed()));
     _changed();
   }
 
@@ -130,9 +142,18 @@ class Expedition extends ChangeNotifier {
     _schedule();
   }
 
+  bool _alertsWere = true, _countdownWere = true;
+
   void _settingsChanged() {
     final s = session;
-    if (s == null || s.autoContinue == settings.autoContinue) return;
+    if (s == null) return;
+    final changed =
+        s.autoContinue != settings.autoContinue ||
+        _alertsWere != settings.alerts ||
+        _countdownWere != settings.countdown;
+    _alertsWere = settings.alerts;
+    _countdownWere = settings.countdown;
+    if (!changed) return;
     s.autoContinue = settings.autoContinue;
     _changed();
   }
@@ -166,7 +187,7 @@ class Expedition extends ChangeNotifier {
 
   void _changed() {
     _save();
-    unawaited(alerts?.schedule(settings.alerts ? session : null));
+    unawaited(alerts?.schedule(session, alerts: settings.alerts, countdown: settings.countdown));
     _schedule();
     notifyListeners();
   }
@@ -184,6 +205,7 @@ class Expedition extends ChangeNotifier {
   Session _wire(Session s) {
     s.onFocus = stats.addFocus;
     s.onAscent = stats.addAscent;
+    s.onLongRest = stats.addLongRest;
     return s;
   }
 
@@ -196,6 +218,7 @@ class Expedition extends ChangeNotifier {
     skips: s.skips,
     shoves: s.shoves,
     summited: s.summited,
+    label: s.label,
   );
 
   void _save() {

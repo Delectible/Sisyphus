@@ -6,6 +6,7 @@ import '../core/alerts.dart';
 import '../core/app_info.dart';
 import '../core/debug.dart';
 import '../core/scope.dart';
+import '../core/settings.dart';
 import '../core/stats.dart';
 import '../core/theme.dart';
 import 'summit_screen.dart';
@@ -134,11 +135,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       )
                     : const SizedBox(),
               ),
+            if (Platform.isAndroid)
+              SwitchListTile(
+                title: const Text('Countdown in notifications'),
+                subtitle: const Text('The time left, live in the notification shade.'),
+                value: s.countdown,
+                onChanged: (v) {
+                  s.countdown = v;
+                  if (v) Alerts.instance.ask();
+                },
+              ),
             SwitchListTile(
               title: const Text('Vibrate'),
               subtitle: const Text('A thud when a phase changes.'),
               value: s.vibrate,
               onChanged: (v) => s.vibrate = v,
+            ),
+            SwitchListTile(
+              title: const Text('Keep the screen on'),
+              subtitle: const Text('While a session is open. Uses more battery.'),
+              value: s.keepAwake,
+              onChanged: (v) => s.keepAwake = v,
+            ),
+            const _Header('Long rest'),
+            SwitchListTile(
+              title: const Text('Take a long rest'),
+              subtitle: Text('A longer rest after every ${s.longEvery} climbs.'),
+              value: s.longRest,
+              onChanged: (v) => s.longRest = v,
+            ),
+            if (s.longRest) ...[
+              _NumberTile(
+                title: 'Long rest',
+                value: s.longMinutes,
+                unit: 'min',
+                onChanged: (v) => s.longMinutes = v,
+                step: 5,
+                min: Settings.minLong,
+                max: Settings.maxLong,
+              ),
+              _NumberTile(
+                title: 'After every',
+                value: s.longEvery,
+                unit: 'climbs',
+                onChanged: (v) => s.longEvery = v,
+                step: 1,
+                min: 2,
+                max: 6,
+              ),
+            ],
+            const _Header('Sound'),
+            SwitchListTile(
+              title: const Text('Ambient sound'),
+              subtitle: const Text('Wind on the climb, the stream in the valley. Mixes with your music.'),
+              value: s.sound,
+              onChanged: (v) => s.sound = v,
             ),
             if (s.debugOpen) ..._debug(context),
             const _Header('About'),
@@ -213,4 +264,45 @@ class _Header extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(16, 22, 16, 6),
     child: Text(text.toUpperCase(), style: Type.label(Palette.of(context).terracotta, size: 11.5)),
   );
+}
+
+/// A setting with - / + buttons.
+class _NumberTile extends StatelessWidget {
+  const _NumberTile({
+    required this.title,
+    required this.value,
+    required this.unit,
+    required this.onChanged,
+    required this.step,
+    required this.min,
+    required this.max,
+  });
+  final String title, unit;
+  final int value, step, min, max;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return ListTile(
+      title: Text(title),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: value > min ? () => onChanged(value - step) : null,
+            icon: const Icon(Icons.remove_circle_outline),
+          ),
+          SizedBox(
+            width: 70,
+            child: Text('$value $unit', textAlign: TextAlign.center, style: Type.number(p.ink, size: 15)),
+          ),
+          IconButton(
+            onPressed: value < max ? () => onChanged(value + step) : null,
+            icon: const Icon(Icons.add_circle_outline),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -15,11 +15,20 @@ of your session and a short poem.
 - **Ascend / Rest** with a big timer on top. Tap it to pause.
 - **Skip** a phase, or **Exit** (your focus still counts).
 - **Motivate** gives the boulder a shove. There are a few other secrets.
-- **The ledger:** mountains climbed, hours focused, streaks, the week.
-- Alerts when a phase ends while the app is closed.
+- **The ledger:** mountains climbed, hours focused, metres climbed,
+  streaks, the week, focus per label.
+- **Labels:** say what a session is for (Study, Work, ...).
+- **Laurels:** achievements that unlock new stones for the boulder
+  (sandstone, marble, obsidian, gold...). Some are secret.
+- **Long rest** after every few climbs, by a campfire.
+- **Ambient sound:** wind on the climb, the stream and birds (or crickets)
+  in the valley. Generated in code, mixes with your music.
+- **Share the summit:** the scene, your numbers and the poem as an image.
+- Alerts when a phase ends while the app is closed, and on Android a live
+  countdown in the notification shade.
 - Light and dark (day and night on the mountain).
-- Small and light on the battery: every scene is drawn in code, at 60 or 30
-  fps, and nothing runs in the background.
+- Small and light on the battery: every scene and sound is made in code,
+  scenes run at 60 or 30 fps, and nothing runs in the background.
 
 ## Getting it
 

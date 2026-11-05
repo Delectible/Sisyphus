@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/rendering.dart' hide Gradient;
 
+import '../core/laurels.dart';
 import 'clock.dart';
 import 'kit.dart';
 
@@ -34,6 +35,9 @@ class AscentState {
   }
 
   bool dark = false;
+
+  /// The boulder's stone (a laurel reward).
+  Skin skin = skins.first;
 
   /// Paused (or waiting): Sisyphus eases to a stop and leans on the stone.
   bool paused = false;
@@ -134,47 +138,128 @@ class AscentPainter extends CustomPainter {
     final full = Rect.fromLTWH(-10, -20, w + 20, h + 40);
 
     // Sky: heavy, brightening a touch near the top of the climb.
-    final skyTop = dark ? const Color(0xFF0E1017) : const Color(0xFF5B626D);
+    final skyTop = dark ? const Color(0xFF0E1017) : const Color(0xFF555C68);
     final skyLow = dark ? const Color(0xFF292B37) : const Color(0xFF9A9EA3);
     final horizonY = h * 0.27;
     vGradient(c, Rect.fromLTRB(full.left, full.top, full.right, h * 0.6), [
       mix(skyTop, const Color(0xFF8C93A0), flash * 0.6 + p * 0.08),
       mix(skyLow, const Color(0xFFD9D4C2), flash * 0.5 + p * 0.25),
     ]);
-    if (dark) stars(c, Rect.fromLTWH(0, 0, w, horizonY), t, const Color(0x55FFFFFF), count: 18);
+    if (dark) stars(c, Rect.fromLTWH(0, 0, w, horizonY), t, const Color(0x55FFFFFF), count: 22);
 
-    // Distant peaks beyond the ridge.
-    final far = Path()..moveTo(full.left, horizonY);
-    for (var i = 0; i <= 8; i++) {
-      final x = full.left + full.width * i / 8;
-      far.lineTo(x, horizonY - (12 + 30 * hash(i + 40)) * (1 - p * 0.4));
+    // The slope's geometry: rises toward the viewer; the ridge comes closer
+    // as we climb.
+    final ground = h * 0.95;
+    double yAt(double z) => horizonY + (ground - horizonY) / z;
+    double xAt(double x, double z) => w / 2 + x * (w * 0.32) / z;
+    final ridgeZ = 30 - 26 * smooth(p);
+    final ridgeY = yAt(ridgeZ);
+
+    // Light behind the ridge: the top is near.
+    glow(
+      c,
+      Offset(w / 2, ridgeY),
+      w * (0.6 + 0.4 * p),
+      fade(dark ? const Color(0xFF8C7DBA) : const Color(0xFFFFE2AE), 0.1 + 0.32 * smooth(p)),
+    );
+
+    // Distant ranges, layered and hazy.
+    void range(double base, double amp, Color col, int seed, int n) {
+      final r = Path()..moveTo(full.left, h);
+      for (var i = 0; i <= n; i++) {
+        final x = full.left + full.width * i / n;
+        r.lineTo(x - full.width / n * 0.5, base - amp * (0.2 + 0.35 * hash(seed * 17 + i)));
+        r.lineTo(x, base - amp * (0.45 + 0.55 * hash(seed * 31 + i)));
+      }
+      r
+        ..lineTo(full.right, h)
+        ..close();
+      c.drawPath(r, fill(col));
     }
-    far
-      ..lineTo(full.right, h)
-      ..lineTo(full.left, h)
-      ..close();
-    c.drawPath(far, fill(fade(dark ? const Color(0xFF1E2029) : const Color(0xFF7D828A), 1)));
+
+    final shrink = 1 - p * 0.4;
+    range(horizonY + 4, 46 * shrink, dark ? const Color(0xFF1C1E29) : const Color(0xFF858A93), 2, 6);
+    range(horizonY + 8, 30 * shrink, dark ? const Color(0xFF22242F) : const Color(0xFF777C84), 4, 9);
 
     if (strikes && since > 0 && since < 0.35) {
       _bolt(c, Offset(w * (0.15 + 0.7 * hash(win * 3)), 0), horizonY, win);
     }
 
-    // Storm clouds drifting.
-    final cloudColor = dark ? const Color(0xFF1A1C25) : const Color(0xFF4F5661);
-    for (var i = 0; i < 6; i++) {
+    // Storm clouds drifting, dark underneath.
+    final cloudTop = dark ? const Color(0xFF2A2D3A) : const Color(0xFF6D7480);
+    final cloudBottom = dark ? const Color(0xFF12131A) : const Color(0xFF424852);
+    for (var i = 0; i < 7; i++) {
       final speed = 4 + hash(i * 5) * 6;
-      final cw = w * (0.5 + 0.4 * hash(i * 9));
+      final cw = w * (0.5 + 0.45 * hash(i * 9));
       final x = ((hash(i * 3) * (w + cw) + t * speed) % (w + cw * 1.2)) - cw * 0.6;
-      final y = h * (0.02 + 0.2 * hash(i * 11));
-      c.drawPath(cloud(Offset(x, y), cw, i + 2), fill(fade(cloudColor, 0.55 + 0.3 * hash(i))));
+      final y = h * (0.0 + 0.22 * hash(i * 11));
+      final at = Offset(x, y);
+      c.drawPath(
+        cloud(at, cw, i + 2),
+        Paint()
+          ..shader = Gradient.linear(at - Offset(0, cw * 0.3), at + Offset(0, cw * 0.08), [
+            fade(cloudTop, 0.85),
+            fade(cloudBottom, 0.95),
+          ]),
+      );
+    }
+
+    // Ravens circling far off.
+    for (var i = 0; i < 3; i++) {
+      final a = t * (0.18 + 0.05 * i) + i * 2.1;
+      final rx = w * (0.18 + 0.05 * i), ry = h * 0.03;
+      final bx = w * (0.62 - 0.08 * i) + math.cos(a) * rx;
+      final by = horizonY - h * (0.1 + 0.03 * i) + math.sin(a) * ry;
+      final flap = math.sin(t * 5 + i * 1.7) * 2.2;
+      final bs = 5.5 - i * 0.8;
+      c.drawPath(
+        Path()
+          ..moveTo(bx - bs, by - flap)
+          ..quadraticBezierTo(bx - bs * 0.4, by - bs * 0.35, bx, by)
+          ..quadraticBezierTo(bx + bs * 0.4, by - bs * 0.35, bx + bs, by - flap),
+        stroke(dark ? const Color(0xCC07080C) : const Color(0xCC2A2D33), 1.5),
+      );
     }
     if (flash > 0) c.drawRect(full, fill(fade(const Color(0xFFE8ECFF), flash * 0.18)));
 
-    // The slope: rises toward the viewer; the ridge comes closer as we climb.
-    final ground = h * 0.95;
-    double yAt(double z) => horizonY + (ground - horizonY) / z;
-    final ridgeZ = 30 - 26 * smooth(p);
-    final ridgeY = yAt(ridgeZ);
+    // Crags flanking the far end of the path.
+    final cliffCol = dark ? const Color(0xFF1A1B22) : const Color(0xFF615D57);
+    final cliffLit = dark ? const Color(0xFF2B2D3B) : const Color(0xFF8A847A);
+    for (final side in [-1.0, 1.0]) {
+      final base = ridgeY + 8;
+      final x0 = side < 0 ? full.left : full.right;
+      final reach = w * (0.34 + 0.08 * p);
+      final height = h * (0.05 + 0.05 * smooth(p));
+      final pts = <Offset>[Offset(x0, base + h * 0.03)];
+      for (var k = 0; k <= 7; k++) {
+        final f = k / 7;
+        final hgt = height * (1 - f * f) * (0.55 + 0.45 * hash(k * 13 + (side < 0 ? 1 : 2)));
+        pts.add(Offset(x0 - side * reach * f, base - hgt));
+      }
+      pts.add(Offset(x0 - side * reach, base + 2));
+      final crag = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (final q in pts.skip(1)) {
+        crag.lineTo(q.dx, q.dy);
+      }
+      crag.close();
+      c.drawPath(crag, fill(cliffCol));
+      // Lit facets on the side facing the path, and cracks.
+      for (var k = 1; k < 7; k += 2) {
+        final a0 = pts[k], a1 = pts[k + 1];
+        c.drawPath(
+          Path()
+            ..moveTo(a0.dx, a0.dy)
+            ..lineTo(a1.dx, a1.dy)
+            ..lineTo(a1.dx + side * 3, base)
+            ..lineTo(a0.dx - side * 6, base)
+            ..close(),
+          fill(fade(cliffLit, 0.55)),
+        );
+        c.drawLine(a0, Offset(a0.dx - side * 4, base), stroke(fade(const Color(0xFF000000), 0.25), 1));
+      }
+    }
+
+    // The slope.
     final slopeFar = dark ? const Color(0xFF3A3A40) : const Color(0xFF948C7D);
     final slopeNear = dark ? const Color(0xFF15151A) : const Color(0xFF453F37);
     final ridge = Path()..moveTo(full.left, ridgeY + 8);
@@ -190,42 +275,148 @@ class AscentPainter extends CustomPainter {
       Paint()
         ..shader = Gradient.linear(Offset(0, ridgeY), Offset(0, h), [mix(slopeFar, skyLow, 0.25), slopeNear]),
     );
+    // The path: worn smooth by the stone, forever.
+    final pathCol = dark ? const Color(0xFF26262C) : const Color(0xFF5E574C);
+    final track = Path()
+      ..moveTo(xAt(-0.25, ridgeZ), ridgeY + 2)
+      ..lineTo(xAt(0.25, ridgeZ), ridgeY + 2)
+      ..lineTo(xAt(1.25, 0.9), yAt(0.9))
+      ..lineTo(xAt(-1.25, 0.9), yAt(0.9))
+      ..close();
+    c.drawPath(
+      track,
+      Paint()
+        ..shader = Gradient.linear(Offset(0, ridgeY), Offset(0, h), [
+          fade(pathCol, 0.15),
+          fade(pathCol, 0.55),
+        ]),
+    );
+    for (final edge in [-1.0, 1.0]) {
+      final berm = Path()
+        ..moveTo(xAt(edge * 0.27, ridgeZ), ridgeY + 2)
+        ..lineTo(xAt(edge * 1.3, 0.9), yAt(0.9));
+      c.drawPath(berm, stroke(fade(dark ? const Color(0xFF4A4A52) : const Color(0xFFA59C8B), 0.5), 2.2));
+    }
 
-    // Stones, tufts and cracks on the slope, coming toward us.
+    // Ridge-top markers: a dead tree and a cairn, nearer as we climb.
+    {
+      final sc = (6 / ridgeZ).clamp(0.2, 1.4);
+      final ink = dark ? const Color(0xFF0D0E12) : const Color(0xFF3A3632);
+      final tx = xAt(4.2, ridgeZ), ty = ridgeY + 3;
+      final trunkH = h * 0.11 * sc;
+      c.drawPath(taper(Offset(tx, ty), Offset(tx - trunkH * 0.1, ty - trunkH), 7 * sc, 2.5 * sc), fill(ink));
+      for (final (f, ang, len) in [(0.55, -0.9, 0.45), (0.7, 0.7, 0.4), (0.85, -0.4, 0.3), (0.4, 1.1, 0.3)]) {
+        final from = Offset(tx - trunkH * 0.1 * f, ty - trunkH * f);
+        final to = from + Offset(math.sin(ang) * trunkH * len, -math.cos(ang) * trunkH * len);
+        c.drawPath(taper(from, to, 3 * sc, 1.2 * sc), fill(ink));
+      }
+      final cx = xAt(-3.4, ridgeZ);
+      for (var k = 0; k < 4; k++) {
+        final r = (9 - k * 1.8) * sc;
+        c.drawOval(
+          Rect.fromCenter(
+            center: Offset(cx + (k.isEven ? 1 : -1) * sc, ty - r * 0.7 - k * 8 * sc),
+            width: r * 2.2,
+            height: r * 1.3,
+          ),
+          fill(ink),
+        );
+      }
+    }
+
+    // Mist lying along the ridge.
+    final mist = dark ? const Color(0xFF3A3D4C) : const Color(0xFFC9C8C0);
+    final mistRect = Rect.fromLTRB(full.left, ridgeY - h * 0.03, full.right, ridgeY + h * 0.05);
+    c.drawRect(
+      mistRect,
+      Paint()
+        ..shader = Gradient.linear(
+          mistRect.topCenter,
+          mistRect.bottomCenter,
+          [fade(mist, 0), fade(mist, 0.28 + 0.06 * math.sin(t * 0.3)), fade(mist, 0)],
+          const [0, 0.45, 1],
+        ),
+    );
+
+    // Stones, tufts, thistles, bones, shards and cracks, coming toward us.
     final walked = this.walked(t);
     final (bc, br) = boulderAt(size);
     final contactY = bc.dy + br * 0.92;
     final items = <(double z, double x, int i)>[];
     const depth = 14.0;
-    for (var i = 0; i < 70; i++) {
+    for (var i = 0; i < 120; i++) {
       final z = 0.85 + ((hash(i * 17) * depth - walked) % depth + depth) % depth;
       if (z > ridgeZ) continue;
-      items.add((z, (hash(i * 23) - 0.5) * 7, i));
+      final big = hash(i * 59) < 0.12;
+      // Big rocks keep to the sides of the path.
+      final x = big
+          ? (hash(i * 23) < 0.5 ? -1.0 : 1.0) * (2.2 + hash(i * 61) * 2.5)
+          : (hash(i * 23) - 0.5) * 8;
+      items.add((z, x, i));
     }
     items.sort((a, b) => b.$1.compareTo(a.$1));
+    final rockCol = dark ? const Color(0xFF55545A) : const Color(0xFF7A7266);
+    final rockLit = dark ? const Color(0xFF7C7B86) : const Color(0xFFB6AD9C);
     void drawItem((double, double, int) it) {
       final (z, x, i) = it;
       final y = yAt(z);
-      final sx = w / 2 + x * (w * 0.32) / z;
+      final sx = xAt(x, z);
       final s = (w * 0.05) / z;
-      final kind = hash(i * 41);
       final fog = ((z - 1) / ridgeZ).clamp(0.0, 1.0);
-      if (kind < 0.45) {
-        final col = mix(dark ? const Color(0xFF55545A) : const Color(0xFF7A7266), slopeFar, fog * 0.6);
+      final big = hash(i * 59) < 0.12;
+      final kind = hash(i * 41);
+      Color fogged(Color col) => mix(col, slopeFar, fog * 0.7);
+      if (big) {
+        // A large boulder by the path, with a lit top and a crack.
+        final r = s * (2.2 + 1.6 * hash(i * 67));
+        c.drawOval(
+          Rect.fromCenter(center: Offset(sx, y), width: r * 2.6, height: r * 0.5),
+          fill(fade(const Color(0xFF000000), 0.3)),
+        );
+        final rock = Path()
+          ..moveTo(sx - r * 1.2, y)
+          ..lineTo(sx - r * 1.0, y - r * 0.8)
+          ..lineTo(sx - r * 0.3, y - r * 1.25)
+          ..lineTo(sx + r * 0.6, y - r * 1.1)
+          ..lineTo(sx + r * 1.2, y - r * 0.4)
+          ..lineTo(sx + r * 1.15, y)
+          ..close();
+        c.drawPath(rock, fill(fogged(rockCol)));
+        c.drawPath(
+          Path()
+            ..moveTo(sx - r * 1.0, y - r * 0.8)
+            ..lineTo(sx - r * 0.3, y - r * 1.25)
+            ..lineTo(sx + r * 0.6, y - r * 1.1)
+            ..lineTo(sx + r * 0.2, y - r * 0.7)
+            ..lineTo(sx - r * 0.6, y - r * 0.65)
+            ..close(),
+          fill(fogged(rockLit)),
+        );
+        c.drawLine(
+          Offset(sx + r * 0.2, y - r * 0.7),
+          Offset(sx + r * 0.35, y),
+          stroke(fade(const Color(0xFF000000), 0.3), math.max(0.8, s * 0.1)),
+        );
+        // Moss on the shadow side.
+        c.drawOval(
+          Rect.fromCenter(center: Offset(sx + r * 0.7, y - r * 0.25), width: r * 0.7, height: r * 0.3),
+          fill(fade(fogged(dark ? const Color(0xFF3A4430) : const Color(0xFF6F7A45)), 0.7)),
+        );
+      } else if (kind < 0.36) {
         c.drawOval(
           Rect.fromCenter(center: Offset(sx, y + s * 0.15), width: s * 2.3, height: s * 0.5),
           fill(fade(const Color(0xFF000000), 0.25)),
         );
         c.drawOval(
           Rect.fromCenter(center: Offset(sx, y - s * 0.2), width: s * 2, height: s * 1.1),
-          fill(col),
+          fill(fogged(rockCol)),
         );
         c.drawOval(
           Rect.fromCenter(center: Offset(sx - s * 0.3, y - s * 0.45), width: s * 0.8, height: s * 0.35),
           fill(fade(const Color(0xFFFFFFFF), dark ? 0.06 : 0.14)),
         );
-      } else if (kind < 0.8) {
-        final col = mix(dark ? const Color(0xFF3C4232) : const Color(0xFF6F6A45), slopeFar, fog * 0.6);
+      } else if (kind < 0.62) {
+        final col = fogged(dark ? const Color(0xFF3C4232) : const Color(0xFF6F6A45));
         final sway = math.sin(t * 1.3 + i) * s * 0.25;
         for (var k = -2; k <= 2; k++) {
           c.drawLine(
@@ -234,11 +425,62 @@ class AscentPainter extends CustomPainter {
             stroke(col, math.max(0.8, s * 0.12)),
           );
         }
+      } else if (kind < 0.72) {
+        // Thistle: stalk, spiky leaves, a purple head nodding in the wind.
+        final sway = math.sin(t * 1.1 + i) * s * 0.3;
+        final head = Offset(sx + sway, y - s * 2.2);
+        final stalk = fogged(dark ? const Color(0xFF3B4436) : const Color(0xFF66704A));
+        c.drawLine(Offset(sx, y), head, stroke(stalk, math.max(0.8, s * 0.12)));
+        c.drawLine(
+          Offset(sx, y - s * 0.8),
+          Offset(sx - s * 0.6, y - s * 1.1),
+          stroke(stalk, math.max(0.6, s * 0.1)),
+        );
+        c.drawLine(
+          Offset(sx, y - s * 1.2),
+          Offset(sx + s * 0.6, y - s * 1.5),
+          stroke(stalk, math.max(0.6, s * 0.1)),
+        );
+        c.drawCircle(head, s * 0.35, fill(stalk));
+        c.drawCircle(
+          head - Offset(0, s * 0.3),
+          s * 0.3,
+          fill(fogged(dark ? const Color(0xFF6A4C7A) : const Color(0xFF9B6BB0))),
+        );
+      } else if (kind < 0.8) {
+        // A shard of an old amphora.
+        final shard = fogged(dark ? const Color(0xFF6E3E2C) : const Color(0xFFB0603F));
+        c.drawArc(
+          Rect.fromCenter(center: Offset(sx, y), width: s * 1.8, height: s * 1.1),
+          3.4,
+          1.8,
+          true,
+          fill(shard),
+        );
+        c.drawArc(
+          Rect.fromCenter(center: Offset(sx, y), width: s * 1.8, height: s * 1.1),
+          3.6,
+          1.2,
+          false,
+          stroke(fade(const Color(0xFF1E1714), 0.6), math.max(0.6, s * 0.08)),
+        );
+      } else if (kind < 0.86) {
+        // Bleached bone.
+        final bone = fogged(dark ? const Color(0xFF9C9A92) : const Color(0xFFE6DFCC));
+        final a = Offset(sx - s * 0.8, y), b = Offset(sx + s * 0.8, y - s * 0.2);
+        c.drawLine(a, b, stroke(bone, math.max(0.8, s * 0.22)));
+        c.drawCircle(a, s * 0.2, fill(bone));
+        c.drawCircle(b, s * 0.2, fill(bone));
       } else {
         c.drawLine(
           Offset(sx - s * 1.5, y),
           Offset(sx + s * 1.2, y + s * 0.15),
           stroke(fade(const Color(0xFF000000), 0.25), math.max(0.6, s * 0.08)),
+        );
+        c.drawLine(
+          Offset(sx + s * 0.2, y + s * 0.05),
+          Offset(sx + s * 0.6, y - s * 0.3),
+          stroke(fade(const Color(0xFF000000), 0.18), math.max(0.5, s * 0.06)),
         );
       }
     }
@@ -258,15 +500,13 @@ class AscentPainter extends CustomPainter {
     );
     // The boulder.
     final rollR = walked / (br / (w * 0.32)) * 0.9;
-    boulder(
+    skinnedBoulder(
       c,
       bc + Offset(0, -kick * 4),
       br,
+      dark ? state.skin.night : state.skin,
       roll: rollR,
       spin: math.sin(t * 0.3) * 0.05,
-      base: dark ? const Color(0xFF4D4B48) : const Color(0xFF8C867B),
-      lit: dark ? const Color(0xFF77736C) : const Color(0xFFBDB6A8),
-      shade: dark ? const Color(0xFF1E1D1F) : const Color(0xFF433F3A),
       light: const Offset(-0.35, -0.75),
     );
     if (flash > 0) {
@@ -275,6 +515,27 @@ class AscentPainter extends CustomPainter {
 
     for (final it in items) {
       if (yAt(it.$1) >= contactY) drawItem(it);
+    }
+
+    // Weather: rain at night, wind-blown dust by day.
+    if (dark) {
+      final rain = stroke(const Color(0x22B8C4E0), 1);
+      for (var k = 0; k < 70; k++) {
+        final speed = 520 + 200 * hash(k * 3);
+        final x = (hash(k * 7) * (w + 80) + t * 60) % (w + 80) - 40;
+        final y = (hash(k * 11) * h + t * speed) % (h + 40) - 20;
+        c.drawLine(Offset(x, y), Offset(x - 4, y + 14), rain);
+      }
+    } else {
+      for (var k = 0; k < 26; k++) {
+        final x = (hash(k * 7) * (w + 60) + t * (30 + 25 * hash(k))) % (w + 60) - 30;
+        final y = h * (0.35 + 0.55 * hash(k * 13)) + math.sin(t * 0.8 + k) * 14;
+        c.drawCircle(
+          Offset(x, y),
+          0.8 + 1.4 * hash(k * 5),
+          fill(fade(const Color(0xFFE8DCC4), 0.25 + 0.2 * hash(k))),
+        );
+      }
     }
 
     // The hands.

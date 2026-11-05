@@ -4,13 +4,21 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart' hide Gradient;
 
+import '../core/laurels.dart';
 import 'clock.dart';
 import 'kit.dart';
 
 /// The valley: lying in the grass at the foot of the mountain, the boulder
 /// waiting nearby. Calm light, slow clouds, an owl on a broken column.
 class RestPainter extends CustomPainter {
-  RestPainter(this.clock, {required this.dark, this.owlAt = -100}) : super(repaint: clock);
+  RestPainter(this.clock, {required this.dark, this.owlAt = -100, this.skin = granite, this.longRest = false})
+    : super(repaint: clock);
+
+  /// The boulder's stone.
+  final Skin skin;
+
+  /// A long rest: a campfire burns by the stream.
+  final bool longRest;
 
   final SceneClock clock;
   final bool dark;
@@ -67,7 +75,7 @@ class RestPainter extends CustomPainter {
     }
 
     // Everything that doesn't move, drawn once per size and theme.
-    final key = '${size.width}x${size.height}/$dark';
+    final key = '${size.width}x${size.height}/$dark/${skin.id}';
     if (_cacheKey != key) {
       final rec = ui.PictureRecorder();
       _scenery(Canvas(rec), w, h, horizon);
@@ -98,6 +106,8 @@ class RestPainter extends CustomPainter {
       final at = Offset(w * (0.38 + 0.08 * k) + drift, horizon + h * (0.075 + 0.018 * k));
       _sheep(c, at, w * (0.026 + 0.004 * k), t + k * 3.3, facingLeft: k == 1);
     }
+
+    if (longRest) _campfire(c, Offset(w * 0.56, h * 0.765), w * 0.05, t);
 
     final colBase = Offset(w * 0.17, h * 0.78);
     final colW = w * 0.11, colH = h * 0.19;
@@ -522,16 +532,7 @@ class RestPainter extends CustomPainter {
       Rect.fromCenter(center: bc + Offset(br * 0.3, br * 0.9), width: br * 2.6, height: br * 0.55),
       fill(const Color(0x44000000)),
     );
-    boulder(
-      c,
-      bc,
-      br,
-      roll: 0.6,
-      base: dark ? const Color(0xFF5B5C66) : const Color(0xFF9C968A),
-      lit: dark ? const Color(0xFF8D90A6) : const Color(0xFFD8D0BE),
-      shade: dark ? const Color(0xFF24252E) : const Color(0xFF55504A),
-      light: dark ? const Offset(0.5, -0.6) : const Offset(0.55, -0.6),
-    );
+    skinnedBoulder(c, bc, br, dark ? skin.night : skin, roll: 0.6, light: const Offset(0.55, -0.6));
 
     // Broken column with the owl.
     final colBase = Offset(w * 0.17, h * 0.78);
@@ -641,6 +642,68 @@ class RestPainter extends CustomPainter {
     c.drawCircle(at + Offset(s * 0.25, -s * 0.38), s * 0.28, fill(wool));
   }
 
+  /// A small fire: a ring of stones, crossed logs, flickering flames,
+  /// sparks and a thread of smoke.
+  void _campfire(Canvas c, Offset at, double s, double t) {
+    glow(
+      c,
+      at - Offset(0, s * 0.4),
+      s * (3.2 + 0.25 * math.sin(t * 9)),
+      fade(const Color(0xFFFFB25A), dark ? 0.32 : 0.18),
+    );
+    for (var k = 0; k < 7; k++) {
+      final a = math.pi * (0.05 + 0.9 * k / 6);
+      final p = at + Offset(math.cos(a) * s * 0.9, math.sin(a) * s * 0.28 + s * 0.05);
+      c.drawOval(
+        Rect.fromCenter(center: p, width: s * 0.42, height: s * 0.26),
+        fill(dark ? const Color(0xFF4A4F63) : const Color(0xFF8D877A)),
+      );
+    }
+    final log = dark ? const Color(0xFF2A1C14) : const Color(0xFF5A3E2A);
+    c.drawPath(
+      taper(at + Offset(-s * 0.7, s * 0.05), at + Offset(s * 0.6, -s * 0.15), s * 0.2, s * 0.17),
+      fill(log),
+    );
+    c.drawPath(
+      taper(at + Offset(s * 0.7, s * 0.05), at + Offset(-s * 0.6, -s * 0.15), s * 0.2, s * 0.17),
+      fill(log),
+    );
+    for (final (col, scale) in [
+      (const Color(0xFFE2572B), 1.0),
+      (const Color(0xFFF59A3A), 0.72),
+      (const Color(0xFFFFE08A), 0.42),
+    ]) {
+      final f = Path();
+      final hgt = s * 1.25 * scale * (0.9 + 0.12 * math.sin(t * 11 + scale * 5));
+      final wob = math.sin(t * 7 + scale * 3) * s * 0.12;
+      f
+        ..moveTo(at.dx - s * 0.45 * scale, at.dy - s * 0.05)
+        ..quadraticBezierTo(at.dx - s * 0.5 * scale, at.dy - hgt * 0.55, at.dx + wob, at.dy - hgt)
+        ..quadraticBezierTo(
+          at.dx + s * 0.5 * scale,
+          at.dy - hgt * 0.5,
+          at.dx + s * 0.45 * scale,
+          at.dy - s * 0.05,
+        )
+        ..close();
+      c.drawPath(f, fill(col));
+    }
+    for (var k = 0; k < 6; k++) {
+      final life = (t * 0.7 + hash(k * 13)) % 1.0;
+      final sp = at + Offset(math.sin(t * 2 + k) * s * 0.4 * life, -s * (0.8 + 2.4 * life));
+      c.drawCircle(sp, 1.3 * (1 - life) + 0.3, fill(fade(const Color(0xFFFFC46B), 1 - life)));
+    }
+    for (var k = 0; k < 5; k++) {
+      final life = (t * 0.12 + k / 5) % 1.0;
+      final sp = at + Offset(math.sin(t * 0.6 + k) * s * 0.6 + life * s * 1.2, -s * (1.6 + 5 * life));
+      c.drawCircle(
+        sp,
+        s * (0.25 + 0.5 * life),
+        fill(fade(dark ? const Color(0xFF9AA0B8) : const Color(0xFFE6E2D8), 0.22 * (1 - life))),
+      );
+    }
+  }
+
   void _owl(Canvas c, Offset perch, double cw, double t) {
     final s = cw * 0.09;
     final ruffle = math.max(0.0, 1 - (t - owlAt) / 0.8);
@@ -709,5 +772,6 @@ class RestPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant RestPainter old) => old.dark != dark || old.owlAt != owlAt;
+  bool shouldRepaint(covariant RestPainter old) =>
+      old.dark != dark || old.owlAt != owlAt || old.skin.id != skin.id;
 }

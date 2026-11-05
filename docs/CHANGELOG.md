@@ -17,3 +17,15 @@ Requests by number, newest last.
    bushes, grazing sheep, butterflies; the still parts are cached as a
    picture so the extra detail costs nothing per frame. Home medallion:
    the boulder rests on the slope.
+4. **0.2.0** Climb scene: layered ranges, a glow behind the ridge that
+   grows near the top, ravens, two-tone storm clouds, crags, the worn path,
+   a dead tree and a cairn on the ridge, mist, big rocks by the path,
+   thistles, amphora shards, bones, rain at night and dust by day.
+   Features: live Android countdown notification (each phase end posts the
+   next phase's countdown); long rest (every N climbs, campfire in the
+   valley); laurels (14, three secret) unlocking boulder stones (sandstone,
+   marble, mossy, obsidian, bronze, gold); session labels with stats per
+   label; shareable summit card; ambient sound generated in code (wind,
+   stream and birds or crickets, summit breeze); keep screen on. Extras:
+   metres climbed, laurel banner, laurels on the summit card, sound toggle
+   on the timer.

@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 
 import '../core/format.dart';
 import '../core/scope.dart';
+import '../core/session.dart';
 import '../core/settings.dart';
 import '../core/theme.dart';
 import '../scene/summit.dart';
 import '../widgets/common.dart';
 import 'climb_screen.dart';
+import 'laurels_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
 
@@ -39,6 +41,12 @@ class HomeScreen extends StatelessWidget {
                             icon: Icons.leaderboard_outlined,
                             label: 'Stats',
                             onTap: () => _push(context, const StatsScreen()),
+                          ),
+                          const Spacer(),
+                          _TopButton(
+                            icon: Icons.emoji_events_outlined,
+                            label: 'Laurels',
+                            onTap: () => _push(context, const LaurelsScreen()),
                           ),
                           const Spacer(),
                           _TopButton(
@@ -85,6 +93,8 @@ class HomeScreen extends StatelessWidget {
                       KeyBand(color: p.line),
                       const SizedBox(height: 14),
                       _Presets(settings: s),
+                      const SizedBox(height: 10),
+                      _Labels(settings: s),
                       const SizedBox(height: 12),
                       Panel(
                         padding: const EdgeInsets.fromLTRB(18, 6, 10, 6),
@@ -162,10 +172,17 @@ class HomeScreen extends StatelessWidget {
   }
 
   static String _summary(Settings s) {
-    final focus = Duration(minutes: s.focus * s.climbs);
-    final total = Duration(minutes: s.focus * s.climbs + s.rest * (s.climbs - 1));
-    final end = DateTime.now().add(total);
-    return '${span(focus)} of focus  ·  ${span(total)} in all  ·  summit at ${timeOfDay(end)}';
+    final now = DateTime.now();
+    final plan = Session(
+      focusMinutes: s.focus,
+      restMinutes: s.rest,
+      climbs: s.climbs,
+      started: now,
+      longRestMinutes: s.longRest ? s.longMinutes : 0,
+      longEvery: s.longEvery,
+    );
+    final total = plan.plannedTotal;
+    return '${span(plan.plannedFocus)} of focus  ·  ${span(total)} in all  ·  summit at ${timeOfDay(now.add(total))}';
   }
 
   static void _push(BuildContext context, Widget w) =>
@@ -356,6 +373,109 @@ class _RoundButtonState extends State<_RoundButton> {
           border: Border.all(color: widget.enabled ? p.line : p.line.withValues(alpha: 0.4)),
         ),
         child: Icon(widget.icon, size: 20, color: widget.enabled ? p.ink : p.muted.withValues(alpha: 0.4)),
+      ),
+    );
+  }
+}
+
+/// What the next session is for: a row of label chips (tap to pick, long
+/// press to remove, + to add).
+class _Labels extends StatelessWidget {
+  const _Labels({required this.settings});
+  final Settings settings;
+
+  Future<void> _add(BuildContext context) async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('NEW LABEL'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 18,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Reading, Code, Thesis...'),
+          onSubmitted: (v) => Navigator.pop(context, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+          TextButton(onPressed: () => Navigator.pop(context, ctrl.text), child: const Text('ADD')),
+        ],
+      ),
+    );
+    if (name != null) settings.addLabel(name);
+  }
+
+  Future<void> _remove(BuildContext context, String name) async {
+    unawaited(HapticFeedback.mediumImpact());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('REMOVE "${name.toUpperCase()}"?'),
+        content: const Text('Its past focus stays in the ledger.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('KEEP')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('REMOVE')),
+        ],
+      ),
+    );
+    if (ok == true) settings.removeLabel(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    Widget chip(String text, bool on, VoidCallback onTap, {VoidCallback? onLong, IconData? icon}) => Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: on ? p.olive : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: on ? p.olive : p.line)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onTap();
+          },
+          onLongPress: onLong,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) Icon(icon, size: 15, color: on ? p.background : p.muted),
+                if (icon != null && text.isNotEmpty) const SizedBox(width: 4),
+                if (text.isNotEmpty)
+                  Text(
+                    text,
+                    style: Type.text(on ? p.background : p.ink, size: 13.5, weight: FontWeight.w500),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4, right: 10),
+              child: Text('FOR', style: Type.label(p.muted, size: 10.5)),
+            ),
+          ),
+          for (final l in settings.labels)
+            chip(
+              l,
+              settings.label == l,
+              () => settings.label = settings.label == l ? null : l,
+              onLong: () => _remove(context, l),
+            ),
+          chip('', false, () => _add(context), icon: Icons.add),
+        ],
       ),
     );
   }

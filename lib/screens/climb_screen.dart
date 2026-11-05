@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../core/ambience.dart';
 import '../core/expedition.dart';
 import '../core/format.dart';
+import '../core/laurels.dart';
 import '../core/poems.dart';
 import '../core/scope.dart';
 import '../core/session.dart';
+import '../core/settings.dart';
 import '../core/theme.dart';
 import '../scene/ascent.dart';
 import '../scene/clock.dart';
@@ -65,8 +70,31 @@ class _ClimbScreenState extends State<ClimbScreen> {
       ..fps = settings.fps;
   }
 
+  // Keep-screen-on and ambient sound follow the settings and the phase.
+  bool _awake = false;
+  Soundscape? _scape;
+
+  void _sync(Settings settings, bool resting, bool dark) {
+    if (settings.keepAwake != _awake) {
+      _awake = settings.keepAwake;
+      unawaited(WakelockPlus.toggle(enable: _awake).catchError((_) {}));
+    }
+    final want = !settings.sound
+        ? null
+        : (resting ? (dark ? Soundscape.valleyNight : Soundscape.valleyDay) : Soundscape.climb);
+    if (want != _scape) {
+      _scape = want;
+      unawaited(Ambience.instance.play(want));
+    }
+  }
+
   @override
   void dispose() {
+    if (_awake) unawaited(WakelockPlus.disable().catchError((_) {}));
+    // The summit screen takes over the sound; otherwise fade it out.
+    if (!_leaving || _exp.session == null || !_exp.session!.finished) {
+      if (_scape != null) unawaited(Ambience.instance.play(null));
+    }
     _exp.removeListener(_onEvent);
     _life.dispose();
     clock.dispose();
@@ -79,7 +107,11 @@ class _ClimbScreenState extends State<ClimbScreen> {
     switch (_exp.event) {
       case SessionEvent.restBegins:
       case SessionEvent.waitingForRest:
-        _say('The stone rolls back down. Rest.');
+        _say(
+          _exp.session?.isLongRest() == true
+              ? 'A long rest. Sit by the fire a while.'
+              : 'The stone rolls back down. Rest.',
+        );
       case SessionEvent.ascentBegins:
       case SessionEvent.waitingForAscent:
         if (_exp.session != null && _exp.session!.index > 0) _say('Back to the stone.');
@@ -138,6 +170,7 @@ class _ClimbScreenState extends State<ClimbScreen> {
 
   void _tapOwl() {
     setState(() => _owlAt = clock.t);
+    AppScope.of(context).stats.addOwlTap();
     HapticFeedback.lightImpact();
     _say(owlLines[_rnd.nextInt(owlLines.length)]);
   }
@@ -180,13 +213,17 @@ class _ClimbScreenState extends State<ClimbScreen> {
     final p = Palette.of(context);
     final dark = p.brightness == Brightness.dark;
     ascent.dark = dark;
+    final settings = AppScope.of(context).settings;
     return ListenableBuilder(
-      listenable: _exp,
+      listenable: Listenable.merge([_exp, settings]),
       builder: (context, _) {
         final s = _exp.session;
         if (s == null) return Scaffold(backgroundColor: p.background);
         final now = _exp.now();
         final resting = s.phase == Phase.rest;
+        final skin = skinById(settings.skin);
+        ascent.skin = skin;
+        _sync(settings, resting, dark);
         ascent.progress = resting ? 0 : s.progress(now);
         ascent.paused = s.paused || s.waiting;
         return PopScope(
@@ -219,7 +256,13 @@ class _ClimbScreenState extends State<ClimbScreen> {
                           child: CustomPaint(
                             size: size,
                             painter: resting
-                                ? RestPainter(clock, dark: dark, owlAt: _owlAt)
+                                ? RestPainter(
+                                    clock,
+                                    dark: dark,
+                                    owlAt: _owlAt,
+                                    skin: skin,
+                                    longRest: s.isLongRest(),
+                                  )
                                 : AscentPainter(clock, ascent),
                           ),
                         );
@@ -231,7 +274,14 @@ class _ClimbScreenState extends State<ClimbScreen> {
                   child: Column(
                     children: [
                       const SizedBox(height: 10),
-                      _TimerPill(session: s, now: now, onTap: _exp.togglePause, dark: dark),
+                      _TimerPill(
+                        session: s,
+                        now: now,
+                        onTap: _exp.togglePause,
+                        dark: dark,
+                        sound: settings.sound,
+                        onSound: () => settings.sound = !settings.sound,
+                      ),
                       const Spacer(),
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
@@ -254,7 +304,13 @@ class _ClimbScreenState extends State<ClimbScreen> {
                   ),
                 ),
                 if (s.waiting) _Waiting(session: s, onGo: _exp.proceed),
-                if (_breathing) _Breathe(onDone: () => setState(() => _breathing = false)),
+                if (_breathing)
+                  _Breathe(
+                    onDone: (finished) {
+                      if (finished) AppScope.of(context).stats.addBreath();
+                      setState(() => _breathing = false);
+                    },
+                  ),
               ],
             ),
           ),
@@ -265,7 +321,16 @@ class _ClimbScreenState extends State<ClimbScreen> {
 }
 
 class _TimerPill extends StatefulWidget {
-  const _TimerPill({required this.session, required this.now, required this.onTap, required this.dark});
+  const _TimerPill({
+    required this.session,
+    required this.now,
+    required this.onTap,
+    required this.dark,
+    required this.sound,
+    required this.onSound,
+  });
+  final bool sound;
+  final VoidCallback onSound;
   final Session session;
   final DateTime now;
   final VoidCallback onTap;
@@ -315,7 +380,9 @@ class _TimerPillState extends State<_TimerPill> with SingleTickerProviderStateMi
     final accent = resting
         ? (dark ? const Color(0xFF9DB07A) : const Color(0xFF66784A))
         : const Color(0xFFE0703F);
-    final label = paused ? 'PAUSED' : (resting ? 'RESTING' : 'ASCENDING');
+    final label = paused
+        ? 'PAUSED'
+        : (resting ? (session.isLongRest() ? 'LONG REST' : 'RESTING') : 'ASCENDING');
     final sub = resting
         ? 'in the valley  ·  ${session.climb} of ${session.climbs} climbed'
         : 'climb ${session.climb} of ${session.climbs}';
@@ -385,6 +452,34 @@ class _TimerPillState extends State<_TimerPill> with SingleTickerProviderStateMi
                       ),
                     ),
                   ],
+                ),
+              ),
+              // Ambient sound on / off, top left.
+              Positioned(
+                top: 6,
+                left: 6,
+                child: Semantics(
+                  button: true,
+                  label: widget.sound ? 'Turn sound off' : 'Turn sound on',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      widget.onSound();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: Icon(
+                          widget.sound ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                          size: 18,
+                          color: fg.withValues(alpha: widget.sound ? 0.8 : 0.45),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
               // The pause / play glyph, top right.
@@ -568,7 +663,9 @@ class _Waiting extends StatelessWidget {
 /// A short guided breath at rest: in 4, hold 2, out 6, three times.
 class _Breathe extends StatefulWidget {
   const _Breathe({required this.onDone});
-  final VoidCallback onDone;
+
+  /// Called with true when the three breaths were finished.
+  final ValueChanged<bool> onDone;
 
   @override
   State<_Breathe> createState() => _BreatheState();
@@ -576,7 +673,7 @@ class _Breathe extends StatefulWidget {
 
 class _BreatheState extends State<_Breathe> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 36))
-    ..forward().whenComplete(widget.onDone);
+    ..forward().whenComplete(() => widget.onDone(true));
 
   @override
   void dispose() {
@@ -587,7 +684,7 @@ class _BreatheState extends State<_Breathe> with SingleTickerProviderStateMixin 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: widget.onDone,
+      onTap: () => widget.onDone(false),
       child: Container(
         color: const Color(0x99000000),
         alignment: Alignment.center,

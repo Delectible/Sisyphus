@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import '../core/laurels.dart';
+
 /// Small drawing helpers shared by the scenes.
 
 /// Deterministic 0..1 noise for an integer seed.
@@ -101,6 +103,8 @@ void boulder(
   Offset light = const Offset(-0.45, -0.55),
   double spin = 0,
   int seed = 11,
+  bool veined = false,
+  bool metal = false,
 }) {
   final rect = Rect.fromCircle(center: center, radius: r);
   c.drawCircle(
@@ -120,7 +124,7 @@ void boulder(
   final cr = math.cos(roll), sr = math.sin(roll);
   final cs = math.cos(spin), ss = math.sin(spin);
   final dots = Paint();
-  for (var i = 0; i < 46; i++) {
+  for (var i = 0; i < (veined || metal ? 12 : 46); i++) {
     final lat = math.asin(hash(seed * 100 + i) * 2 - 1);
     final lon = hash(seed * 200 + i) * math.pi * 2;
     var x = math.cos(lat) * math.sin(lon);
@@ -177,6 +181,46 @@ void boulder(
       }
     }
     c.drawPath(path, stroke(fade(shade, 0.7), r * 0.012));
+  }
+  // Marble veins: long wandering lines over the sphere, turning with it.
+  if (veined) {
+    for (var k = 0; k < 6; k++) {
+      final lat0 = (hash(seed * 7 + k * 31) - 0.5) * 2.4;
+      final lon0 = hash(seed * 9 + k * 37) * math.pi * 2;
+      final path = Path();
+      var started = false;
+      for (var j = 0; j < 24; j++) {
+        final lat = lat0 + math.sin(j * 0.6 + k) * 0.25;
+        final lon = lon0 + j * 0.12;
+        final x = math.cos(lat) * math.sin(lon);
+        final y = math.sin(lat);
+        final z0 = math.cos(lat) * math.cos(lon);
+        final y2 = y * cr + z0 * sr;
+        final z2 = -y * sr + z0 * cr;
+        if (z2 <= 0.05) {
+          started = false;
+          continue;
+        }
+        final pt = center + Offset((x * cs - y2 * ss) * r, -(x * ss + y2 * cs) * r);
+        if (!started) {
+          path.moveTo(pt.dx, pt.dy);
+          started = true;
+        } else {
+          path.lineTo(pt.dx, pt.dy);
+        }
+      }
+      c.drawPath(path, stroke(fade(shade, 0.35), r * (0.006 + 0.008 * hash(k))));
+    }
+  }
+  // Metal: a crisp highlight and a cool reflected rim.
+  if (metal) {
+    final hl = center + Offset(light.dx * r * 0.55, light.dy * r * 0.55);
+    c.drawCircle(
+      hl,
+      r * 0.32,
+      Paint()..shader = Gradient.radial(hl, r * 0.32, [fade(lit, 0.9), fade(lit, 0)]),
+    );
+    c.drawCircle(hl, r * 0.08, fill(fade(const Color(0xFFFFFFFF), 0.7)));
   }
   // Ambient occlusion along the bottom and a rim of reflected light.
   c.drawCircle(
@@ -262,3 +306,26 @@ void meander(Canvas c, Rect r, Color color, {double unit = 6}) {
   c.drawLine(Offset(x0, top - unit), Offset(x0 + n * cell, top - unit), paint);
   c.drawLine(Offset(x0, top + unit * 4), Offset(x0 + n * cell, top + unit * 4), paint);
 }
+
+/// Draws the boulder in [skin] (laurel stones), lit from [light].
+void skinnedBoulder(
+  Canvas c,
+  Offset center,
+  double r,
+  Skin skin, {
+  required double roll,
+  Offset light = const Offset(-0.45, -0.55),
+  double spin = 0,
+}) => boulder(
+  c,
+  center,
+  r,
+  roll: roll,
+  base: skin.base,
+  lit: skin.lit,
+  shade: skin.shade,
+  light: light,
+  spin: spin,
+  veined: skin.veined,
+  metal: skin.metal,
+);

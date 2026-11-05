@@ -26,7 +26,10 @@ class SessionRecord {
     required this.skips,
     required this.shoves,
     required this.summited,
+    this.label,
   });
+
+  final String? label;
 
   Map<String, Object> toJson() => {
     's': start.millisecondsSinceEpoch,
@@ -37,6 +40,7 @@ class SessionRecord {
     'k': skips,
     'v': shoves,
     'u': summited,
+    'l': ?label,
   };
 
   static SessionRecord fromJson(Map<String, dynamic> j) => SessionRecord(
@@ -48,6 +52,7 @@ class SessionRecord {
     skips: j['k'] as int,
     shoves: j['v'] as int,
     summited: j['u'] as bool,
+    label: j['l'] as String?,
   );
 }
 
@@ -75,12 +80,24 @@ class Stats extends ChangeNotifier {
   int shoves = 0;
   int slips = 0;
   int bestStreak = 0;
+  int owlTaps = 0;
+  int breaths = 0;
+  int nightSummits = 0;
+  int dawnSummits = 0;
+  int cleanSummits = 0;
+  int longRests = 0;
   Duration focus = Duration.zero;
   Duration longest = Duration.zero;
   DateTime? first;
 
   /// Focus seconds per local day ('2026-11-05'), the last ~400 days.
   final Map<String, int> daily = {};
+
+  /// Per label: focus seconds and mountains.
+  final Map<String, ({int focus, int mountains})> byLabel = {};
+
+  /// Metres climbed: every minute of focus is twelve metres of mountain.
+  int get metres => focus.inMinutes * 12;
 
   /// The last few sessions, newest first.
   final List<SessionRecord> recent = [];
@@ -150,15 +167,39 @@ class Stats extends ChangeNotifier {
     _save();
   }
 
+  void addOwlTap() {
+    owlTaps++;
+    _save();
+  }
+
+  void addBreath() {
+    breaths++;
+    _save();
+  }
+
+  void addLongRest() {
+    longRests++;
+    _save();
+  }
+
   void addSession(SessionRecord r) {
     sessions++;
     first ??= r.start;
     if (r.summited) {
       mountains++;
+      final hr = r.end.hour;
+      if (hr >= 21 || hr < 4) nightSummits++;
+      if (hr >= 4 && hr < 8) dawnSummits++;
+      if (r.skips == 0) cleanSummits++;
     } else if (r.climbsDone < r.climbsPlanned) {
       abandoned++;
     }
     if (r.focus > longest) longest = r.focus;
+    final l = r.label;
+    if (l != null) {
+      final b = byLabel[l] ?? (focus: 0, mountains: 0);
+      byLabel[l] = (focus: b.focus + r.focus.inSeconds, mountains: b.mountains + (r.summited ? 1 : 0));
+    }
     recent.insert(0, r);
     if (recent.length > 30) recent.removeRange(30, recent.length);
     _save();
@@ -166,6 +207,8 @@ class Stats extends ChangeNotifier {
 
   void reset() {
     mountains = sessions = abandoned = ascents = shoves = slips = bestStreak = 0;
+    owlTaps = breaths = nightSummits = dawnSummits = cleanSummits = longRests = 0;
+    byLabel.clear();
     focus = longest = Duration.zero;
     first = null;
     daily.clear();
@@ -183,6 +226,16 @@ class Stats extends ChangeNotifier {
     shoves = j['shoves'] as int? ?? 0;
     slips = j['slips'] as int? ?? 0;
     bestStreak = j['bestStreak'] as int? ?? 0;
+    owlTaps = j['owlTaps'] as int? ?? 0;
+    breaths = j['breaths'] as int? ?? 0;
+    nightSummits = j['nightSummits'] as int? ?? 0;
+    dawnSummits = j['dawnSummits'] as int? ?? 0;
+    cleanSummits = j['cleanSummits'] as int? ?? 0;
+    longRests = j['longRests'] as int? ?? 0;
+    (j['byLabel'] as Map<String, dynamic>? ?? {}).forEach((k, v) {
+      final m = v as Map<String, dynamic>;
+      byLabel[k] = (focus: m['f'] as int? ?? 0, mountains: m['m'] as int? ?? 0);
+    });
     focus = Duration(seconds: j['focus'] as int? ?? 0);
     longest = Duration(seconds: j['longest'] as int? ?? 0);
     final f = j['first'] as int?;
@@ -210,6 +263,15 @@ class Stats extends ChangeNotifier {
         'shoves': shoves,
         'slips': slips,
         'bestStreak': bestStreak,
+        'owlTaps': owlTaps,
+        'breaths': breaths,
+        'nightSummits': nightSummits,
+        'dawnSummits': dawnSummits,
+        'cleanSummits': cleanSummits,
+        'longRests': longRests,
+        'byLabel': {
+          for (final e in byLabel.entries) e.key: {'f': e.value.focus, 'm': e.value.mountains},
+        },
         'focus': focus.inSeconds,
         'longest': longest.inSeconds,
         'first': first?.millisecondsSinceEpoch,

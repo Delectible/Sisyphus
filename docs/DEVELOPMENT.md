@@ -15,10 +15,19 @@ don't keep (CI does the same), then `flutter pub get`.
 - `lib/core/expedition.dart`: owns the running session; ticks once a second
   while the app is open, saves it (shared_preferences), reschedules alerts,
   writes stats.
-- `lib/core/alerts.dart`: phase-end notifications scheduled ahead
-  (flutter_local_notifications). Exact on Android only when the user allows
-  alarms (Settings > On-time alerts).
-- `lib/core/stats.dart`: lifetime totals, focus per day, recent sessions.
+- `lib/core/alerts.dart`: notifications scheduled ahead
+  (flutter_local_notifications). On Android a live countdown (chronometer)
+  sits in the shade; each phase end posts the next phase's countdown on the
+  same id. Exact only when the user allows alarms (Settings > On-time
+  alerts). iPhone gets plain time-sensitive alerts (a Live Activity would
+  need a widget extension target).
+- `lib/core/stats.dart`: lifetime totals, focus per day and per label,
+  recent sessions, counters for laurels.
+- `lib/core/laurels.dart`: laurels (achievements), the boulder skins they
+  unlock, and `LaurelWatch`, which announces new ones (banner in app.dart).
+- `lib/core/ambience.dart`: ambient sound synthesised in an isolate (wind,
+  stream, birds, crickets), written once to the cache as a WAV loop and
+  played with audioplayers (mixes with other audio, respects silent mode).
 - `lib/core/poems.dart`: summit poems by mood, owl lines, Motivate cheers.
 - `lib/scene/`: `CustomPainter`s for the three scenes, driven by
   `SceneClock` (a plain timer at the Settings frame rate, stopped when the
@@ -31,7 +40,8 @@ don't keep (CI does the same), then `flutter pub get`.
 
 Motivate (shove), 7 quick taps on the boulder (it slips), the owl (advice),
 Breathe at rest, long-press the title / the mountain count, a rare lightning
-strike, version x7 in Settings (Debug, password).
+strike, a campfire on long rests, version x7 in Settings (Debug, password).
+Secret laurels: Wisdom (owl x7), Deep Breath, As It Always Does (slip).
 
 ## Debug
 

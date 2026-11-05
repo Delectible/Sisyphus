@@ -19,6 +19,9 @@ class Session {
     required this.started,
     this.speed = 1,
     this.autoContinue = true,
+    this.longRestMinutes = 0,
+    this.longEvery = 4,
+    this.label,
   }) : _segmentStart = started,
        _endsAt = started.add(_dur(focusMinutes, speed));
 
@@ -31,6 +34,13 @@ class Session {
   /// nominal minutes.
   final int speed;
   bool autoContinue;
+
+  /// A longer rest after every [longEvery] climbs (0 = off).
+  final int longRestMinutes;
+  final int longEvery;
+
+  /// What this session is for ("Study"), if anything.
+  final String? label;
 
   int _index = 0;
   DateTime? _endsAt;
@@ -50,6 +60,7 @@ class Session {
   /// completed in full.
   void Function(Duration focus, DateTime at)? onFocus;
   void Function()? onAscent;
+  void Function()? onLongRest;
 
   static Duration _dur(int minutes, int speed) =>
       Duration(milliseconds: (minutes * 60000 / math.max(1, speed)).round());
@@ -73,7 +84,26 @@ class Session {
   /// Reached the top having done at least half the planned focus.
   bool get summited => _finished && focused * 2 >= plannedFocus;
 
-  Duration phaseLength([int? i]) => _dur((i ?? _index).isEven ? focusMinutes : restMinutes, speed);
+  /// Whether rest phase [i] (default: the current phase) is a long rest.
+  bool isLongRest([int? i]) {
+    final k = i ?? _index;
+    return k.isOdd && longRestMinutes > 0 && longEvery > 0 && ((k + 1) ~/ 2) % longEvery == 0;
+  }
+
+  Duration phaseLength([int? i]) {
+    final k = i ?? _index;
+    if (k.isEven) return _dur(focusMinutes, speed);
+    return _dur(isLongRest(k) ? longRestMinutes : restMinutes, speed);
+  }
+
+  /// Total planned length of the whole session (nominal minutes).
+  Duration get plannedTotal {
+    var d = Duration.zero;
+    for (var i = 0; i < phaseCount; i++) {
+      d += phaseLength(i) * speed;
+    }
+    return d;
+  }
 
   Duration remaining(DateTime now) {
     if (_finished) return Duration.zero;
@@ -117,6 +147,7 @@ class Session {
         onAscent?.call();
       } else {
         restsTaken++;
+        if (isLongRest()) onLongRest?.call();
       }
       ev = _advance(e, start: autoContinue);
     }
@@ -197,6 +228,9 @@ class Session {
     'started': started.millisecondsSinceEpoch,
     'speed': speed,
     'auto': autoContinue,
+    'longRest': longRestMinutes,
+    'longEvery': longEvery,
+    'label': label,
     'index': _index,
     'endsAt': _endsAt?.millisecondsSinceEpoch,
     'left': _left?.inMilliseconds,
@@ -218,6 +252,9 @@ class Session {
       started: t('started')!,
       speed: j['speed'] as int? ?? 1,
       autoContinue: j['auto'] as bool? ?? true,
+      longRestMinutes: j['longRest'] as int? ?? 0,
+      longEvery: j['longEvery'] as int? ?? 4,
+      label: j['label'] as String?,
     );
     s._index = j['index'] as int;
     s._endsAt = t('endsAt');

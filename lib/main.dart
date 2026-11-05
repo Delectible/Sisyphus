@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'core/alerts.dart';
 import 'core/expedition.dart';
+import 'core/laurels.dart';
 import 'core/settings.dart';
 import 'core/stats.dart';
 
@@ -16,5 +17,6 @@ Future<void> main() async {
   final settings = Settings(prefs);
   final stats = Stats(prefs);
   final expedition = Expedition(prefs, settings, stats, alerts: Alerts.instance);
-  runApp(SisyphusApp(settings: settings, stats: stats, expedition: expedition));
+  final laurels = LaurelWatch(prefs, stats);
+  runApp(SisyphusApp(settings: settings, stats: stats, expedition: expedition, laurels: laurels));
 }
