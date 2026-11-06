@@ -101,7 +101,6 @@ def mark(S, bg=True, mono=False, k=1.0):
             d.line(pts, fill=col, width=lw)
             d.line([(x + unit * 3, y0 + unit * 3), (x + unit * 4, y0 + unit * 3)], fill=col, width=lw)
             x += unit * 4
-        d.line([(0, y0 - unit), (S2, y0 - unit)], fill=col, width=lw)
         d.line([(0, y0 + unit * 4), (S2, y0 + unit * 4)], fill=col, width=lw)
     # The boulder.
     D = int(S2 * 0.5 * k)
@@ -172,23 +171,81 @@ def main():
         save(sphere(sp * 4).resize((sp, sp), Image.LANCZOS), 'android', 'app', 'src', 'main', 'res',
              f'drawable-{name}', 'splash_boulder.png')
 
-    # Play feature graphic and GitHub social preview.
+    # Play feature graphic and GitHub social preview: the icon, the name,
+    # the Camus line from the home screen, all sized to fit.
     def banner(W, H, path):
-        im = Image.new('RGB', (W, H), (243, 238, 228))
-        icon = mark(int(H * 0.72))
+        SSB = 2
+        W2, H2 = W * SSB, H * SSB
+        im = Image.new('RGB', (W2, H2), (243, 238, 228))
+        d = ImageDraw.Draw(im)
+        ink, muted, line = (38, 37, 44), (119, 115, 107), (220, 212, 197)
+        icon_size = int(H2 * 0.62)
+        icon = mark(icon_size)
         msk = Image.new('L', icon.size, 0)
         ImageDraw.Draw(msk).rounded_rectangle((0, 0, icon.width - 1, icon.height - 1), radius=icon.width * 0.22, fill=255)
-        im.paste(icon, (int(H * 0.14), int(H * 0.14)), msk)
-        d = ImageDraw.Draw(im)
-        try:
-            title = ImageFont.truetype(os.path.join(ROOT, 'assets', 'fonts', 'Cinzel-700.ttf'), int(H * 0.17))
-            sub = ImageFont.truetype(os.path.join(ROOT, 'assets', 'fonts', 'Jost-400.ttf'), int(H * 0.065))
-        except OSError:
-            title = sub = ImageFont.load_default()
-        x = int(H * 1.05)
-        d.text((x, int(H * 0.28)), 'SISYPHUS', font=title, fill=(38, 37, 44))
-        d.text((x + 4, int(H * 0.55)), 'A focus timer. Push the stone, rest, push again.', font=sub, fill=(119, 115, 107))
-        save(im, *path)
+        ix, iy = int(H2 * 0.13), (H2 - icon_size) // 2 - int(H2 * 0.03)
+        shadow = Image.new('L', (W2, H2), 0)
+        ImageDraw.Draw(shadow).rounded_rectangle(
+            (ix, iy + H2 * 0.03, ix + icon_size, iy + icon_size + H2 * 0.03), radius=icon_size * 0.22, fill=70)
+        shadow = shadow.filter(ImageFilter.GaussianBlur(H2 * 0.03))
+        im.paste((60, 40, 30), (0, 0), shadow)
+        im.paste(icon, (ix, iy), msk)
+
+        font_dir = os.path.join(ROOT, 'assets', 'fonts')
+
+        def spaced(text, font, spacing):
+            return sum(d.textlength(ch, font=font) for ch in text) + spacing * (len(text) - 1)
+
+        def draw_spaced(x, y, text, font, spacing, fill):
+            for ch in text:
+                d.text((x, y), ch, font=font, fill=fill)
+                x += d.textlength(ch, font=font) + spacing
+
+        def fit(text, file, target_w, max_size, spacing_k):
+            size = max_size
+            while size > 8:
+                f = ImageFont.truetype(os.path.join(font_dir, file), size)
+                if spaced(text, f, size * spacing_k) <= target_w:
+                    return f, size * spacing_k
+                size -= 2
+            return f, size * spacing_k
+
+        left = ix + icon_size + int(H2 * 0.12)
+        right = W2 - int(H2 * 0.12)
+        avail = right - left
+        title_f, title_sp = fit('SISYPHUS', 'Cinzel-700.ttf', avail, int(H2 * 0.2), 0.14)
+        quote = 'One must imagine Sisyphus happy.'
+        quote_f, quote_sp = fit(quote, 'Cinzel-400.ttf', avail, int(H2 * 0.06), 0.06)
+        credit_f = ImageFont.truetype(os.path.join(font_dir, 'Jost-400.ttf'), int(quote_f.size * 0.85))
+        tag_f, tag_sp = fit('A FOCUS TIMER', 'Cinzel-600.ttf', avail, int(H2 * 0.04), 0.3)
+
+        tb = title_f.getbbox('S')
+        title_h = tb[3] - tb[1]
+        qb = quote_f.getbbox('O')
+        quote_h = qb[3] - qb[1]
+        gap1, gap2, gap3 = H2 * 0.06, H2 * 0.05, H2 * 0.03
+        block = tag_f.size + gap3 + title_h + gap1 + quote_h + gap2 + credit_f.size
+        y = (H2 - block) / 2 - H2 * 0.02
+        draw_spaced(left + 2, y, 'A FOCUS TIMER', tag_f, tag_sp, (176, 80, 47))
+        y += tag_f.size + gap3
+        draw_spaced(left, y - tb[1], 'SISYPHUS', title_f, title_sp, ink)
+        y += title_h + gap1 * 0.45
+        # A Greek key rule between the name and the line.
+        unit = H2 * 0.008
+        rule_w = spaced('SISYPHUS', title_f, title_sp)
+        lw = max(1, int(unit * 0.35))
+        x = left
+        while x + unit * 4 <= left + rule_w:
+            pts = [(x, y + unit * 3), (x, y), (x + unit * 3, y), (x + unit * 3, y + unit * 2),
+                   (x + unit, y + unit * 2), (x + unit, y + unit)]
+            d.line(pts, fill=line, width=lw)
+            d.line([(x + unit * 3, y + unit * 3), (x + unit * 4, y + unit * 3)], fill=line, width=lw)
+            x += unit * 4
+        y += gap1 * 0.55 + unit * 3
+        draw_spaced(left, y - qb[1], quote, quote_f, quote_sp, muted)
+        y += quote_h + gap2 * 0.6
+        d.text((left, y), 'Albert Camus', font=credit_f, fill=(160, 155, 146))
+        save(im.resize((W, H), Image.LANCZOS), *path)
 
     banner(1024, 500, ('fastlane', 'metadata', 'android', 'en-AU', 'images', 'featureGraphic.png'))
     banner(1280, 640, ('docs', 'social_preview.png'))
