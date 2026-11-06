@@ -90,27 +90,29 @@ void main() {
     expect(laurels.map((l) => l.id).toSet().length, laurels.length);
   });
 
-  for (final scape in Soundscape.values) {
-    test('sound: ${scape.name} is a clean WAV loop', () {
-      final wav = synthesize(scape, seconds: 4);
-      final data = ByteData.sublistView(wav);
-      expect(String.fromCharCodes(wav.sublist(0, 4)), 'RIFF');
-      expect(String.fromCharCodes(wav.sublist(8, 12)), 'WAVE');
-      expect(data.getUint32(24, Endian.little), 22050);
-      final n = (wav.length - 44) ~/ 2;
-      expect(n, 4 * 22050);
-      var peak = 0;
-      for (var i = 0; i < n; i++) {
-        peak = peak > data.getInt16(44 + i * 2, Endian.little).abs()
-            ? peak
-            : data.getInt16(44 + i * 2, Endian.little).abs();
-      }
-      expect(peak, greaterThan(10000)); // audible
-      expect(peak, lessThan(32767)); // no clipping
-      // The loop point is smooth: last and first samples are close.
-      final first = data.getInt16(44, Endian.little);
-      final last = data.getInt16(44 + (n - 1) * 2, Endian.little);
-      expect((first - last).abs(), lessThan(6000));
-    });
-  }
+  test('sound: the wind is a clean, seamless WAV loop', () {
+    final wav = synthesize(seconds: 8);
+    final data = ByteData.sublistView(wav);
+    expect(String.fromCharCodes(wav.sublist(0, 4)), 'RIFF');
+    expect(String.fromCharCodes(wav.sublist(8, 12)), 'WAVE');
+    expect(data.getUint32(24, Endian.little), 22050);
+    final n = (wav.length - 44) ~/ 2;
+    expect(n, 8 * 22050);
+    int at(int i) => data.getInt16(44 + i * 2, Endian.little);
+    var peak = 0;
+    var sum = 0.0;
+    var jumps = 0;
+    for (var i = 0; i < n; i++) {
+      final v = at(i);
+      peak = v.abs() > peak ? v.abs() : peak;
+      sum += v;
+      if (i > 0 && (v - at(i - 1)).abs() > 3000) jumps++;
+    }
+    expect(peak, greaterThan(10000)); // audible
+    expect(peak, lessThan(32767)); // no clipping
+    expect((sum / n).abs(), lessThan(800)); // centred, no DC
+    expect(jumps, 0); // smooth: no clicks or hiss spikes
+    // The loop point is smooth too.
+    expect((at(0) - at(n - 1)).abs(), lessThan(3000));
+  });
 }

@@ -21,8 +21,8 @@ of your session and a short poem.
 - **Laurels:** achievements that unlock new stones for the boulder
   (sandstone, marble, obsidian, gold...). Some are secret.
 - **Long rest** after every few climbs, by a campfire.
-- **Ambient sound:** wind on the climb, the stream and birds (or crickets)
-  in the valley. Generated in code, mixes with your music.
+- **Ambient sound:** a soft wind through the whole session. Generated in
+  code, mixes with your music.
 - **Share the summit:** the scene, your numbers and the poem as an image.
 - Alerts when a phase ends while the app is closed, and on Android a live
   countdown in the notification shade.

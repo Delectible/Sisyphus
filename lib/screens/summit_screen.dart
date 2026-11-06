@@ -40,6 +40,9 @@ class _SummitScreenState extends State<SummitScreen> {
   Poem? _poem;
   List<Laurel> _earned = const [];
   bool _sound = false;
+
+  /// Climb again: the next session keeps the wind going.
+  bool _continuing = false;
   bool _sharing = false;
 
   @override
@@ -66,13 +69,13 @@ class _SummitScreenState extends State<SummitScreen> {
         scope.expedition.close();
       }
       _sound = scope.settings.sound;
-      if (_sound) unawaited(Ambience.instance.play(Soundscape.summit));
+      if (_sound) unawaited(Ambience.instance.play(true));
     }
   }
 
   @override
   void dispose() {
-    if (_sound) unawaited(Ambience.instance.play(null));
+    if (_sound && !_continuing) unawaited(Ambience.instance.play(false));
     clock.dispose();
     super.dispose();
   }
@@ -272,6 +275,7 @@ class _SummitScreenState extends State<SummitScreen> {
                             child: PillButton(
                               label: 'Climb again',
                               onTap: () {
+                                _continuing = true;
                                 AppScope.of(context).expedition.begin();
                                 Navigator.of(context).pushReplacement(
                                   MaterialPageRoute<void>(builder: (_) => const ClimbScreen()),

@@ -29,3 +29,8 @@ Requests by number, newest last.
    stream and birds or crickets, summit breeze); keep screen on. Extras:
    metres climbed, laurel banner, laurels on the summit card, sound toggle
    on the timer.
+5. **0.2.1** Sound: the valley stream, birds and crickets are gone; one
+   soft wind plays through the whole session (warm brown noise trimmed
+   below ~80 Hz for phone speakers, slow swells of a few dB, a minute-long
+   seamless loop). Motivate: dropped "Zeus is watching" and "The gods
+   tremble" (now "Keep rolling", "Almost there").

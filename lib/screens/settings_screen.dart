@@ -187,7 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const _Header('Sound'),
             SwitchListTile(
               title: const Text('Ambient sound'),
-              subtitle: const Text('Wind on the climb, the stream in the valley. Mixes with your music.'),
+              subtitle: const Text('A soft wind, up the mountain and down. Mixes with your music.'),
               value: s.sound,
               onChanged: (v) => s.sound = v,
             ),

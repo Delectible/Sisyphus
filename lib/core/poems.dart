@@ -156,9 +156,9 @@ const shoveLines = [
   'For glory!',
   'Up you go!',
   'Not today, gravity.',
-  'Zeus is watching.',
+  'Keep rolling.',
   'Stone cold focus.',
   'Hup!',
   'One more step.',
-  'The gods tremble.',
+  'Almost there.',
 ];

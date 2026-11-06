@@ -25,9 +25,10 @@ don't keep (CI does the same), then `flutter pub get`.
   recent sessions, counters for laurels.
 - `lib/core/laurels.dart`: laurels (achievements), the boulder skins they
   unlock, and `LaurelWatch`, which announces new ones (banner in app.dart).
-- `lib/core/ambience.dart`: ambient sound synthesised in an isolate (wind,
-  stream, birds, crickets), written once to the cache as a WAV loop and
-  played with audioplayers (mixes with other audio, respects silent mode).
+- `lib/core/ambience.dart`: ambient wind (shaped brown noise) synthesised
+  in an isolate, written once to the cache as a minute-long WAV loop and
+  played with audioplayers through the whole session (mixes with other
+  audio, respects silent mode).
 - `lib/core/poems.dart`: summit poems by mood, owl lines, Motivate cheers.
 - `lib/scene/`: `CustomPainter`s for the three scenes, driven by
   `SceneClock` (a plain timer at the Settings frame rate, stopped when the

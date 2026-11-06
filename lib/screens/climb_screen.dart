@@ -72,19 +72,16 @@ class _ClimbScreenState extends State<ClimbScreen> {
 
   // Keep-screen-on and ambient sound follow the settings and the phase.
   bool _awake = false;
-  Soundscape? _scape;
+  bool _sound = false;
 
   void _sync(Settings settings, bool resting, bool dark) {
     if (settings.keepAwake != _awake) {
       _awake = settings.keepAwake;
       unawaited(WakelockPlus.toggle(enable: _awake).catchError((_) {}));
     }
-    final want = !settings.sound
-        ? null
-        : (resting ? (dark ? Soundscape.valleyNight : Soundscape.valleyDay) : Soundscape.climb);
-    if (want != _scape) {
-      _scape = want;
-      unawaited(Ambience.instance.play(want));
+    if (settings.sound != _sound) {
+      _sound = settings.sound;
+      unawaited(Ambience.instance.play(_sound));
     }
   }
 
@@ -93,7 +90,7 @@ class _ClimbScreenState extends State<ClimbScreen> {
     if (_awake) unawaited(WakelockPlus.disable().catchError((_) {}));
     // The summit screen takes over the sound; otherwise fade it out.
     if (!_leaving || _exp.session == null || !_exp.session!.finished) {
-      if (_scape != null) unawaited(Ambience.instance.play(null));
+      if (_sound) unawaited(Ambience.instance.play(false));
     }
     _exp.removeListener(_onEvent);
     _life.dispose();
