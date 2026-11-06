@@ -92,7 +92,9 @@ def main(build_number):
     s, groups = call('GET', f'/betaGroups?filter[app]={app}&limit=50')
     external = [g for g in groups.get('data', []) if not g['attributes'].get('isInternalGroup')]
     if not external:
-        sys.exit(f'no external beta groups found ({s}: {json.dumps(groups)[:400]})')
+        # Internal testers already have the build; nothing more to do.
+        print(f'no external beta groups yet ({s}); internal testers only', flush=True)
+        return
     for g in external:
         s, r = call('POST', f"/betaGroups/{g['id']}/relationships/builds",
                     {'data': [{'type': 'builds', 'id': bid}]})
